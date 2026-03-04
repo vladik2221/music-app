@@ -1,0 +1,66 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id         String  @id @default(cuid())
+  telegramId String  @unique
+  username   String?
+  firstName  String?
+  role       String  @default("user")
+
+  trialStartedAt DateTime?
+  trialEndsAt    DateTime?
+  accessEndsAt   DateTime?
+
+  favorites Favorite[]
+  payments  Payment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Track {
+  id          String  @id @default(cuid())
+  title       String
+  artist      String?
+  coverUrl    String?
+  durationSec Int?
+  filePath    String?
+  isPublished Boolean @default(false)
+
+  favorites Favorite[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model Favorite {
+  userId    String
+  trackId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  track Track @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@id([userId, trackId])
+}
+
+model Payment {
+  id                String @id @default(cuid())
+  userId            String
+  provider          String @default("yookassa")
+  providerPaymentId String @unique
+  status            String
+  amountRub         String
+  planDays          Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
