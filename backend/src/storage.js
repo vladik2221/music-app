@@ -53,11 +53,4 @@ export async function getSignedStreamUrl(s3Key) {
   return getSignedUrl(s3, cmd, { expiresIn: 3600 });
 }
 
-/**
- * Get a public URL for a cover image.
- * Works if the bucket has public read enabled for the covers/ prefix.
- * Falls back to signed URL otherwise.
- */
-export function getPublicCoverUrl(s3Key) {
-  return `${ENDPOINT}/${BUCKET}/${s3Key}`;
-}
+

@@ -8,7 +8,7 @@ import { prisma } from './prisma.js';
 import { authTelegram, requireAuth, attachUser, requireAdmin, sanitizeUser } from './auth.js';
 import { addDays, isAccessActive, now } from './utils.js';
 import { createYooKassaPayment, getYooKassaPayment } from './yookassa.js';
-import { uploadToS3, deleteFromS3, getSignedStreamUrl, getPublicCoverUrl } from './storage.js';
+import { uploadToS3, deleteFromS3, getSignedStreamUrl } from './storage.js';
 
 const router = express.Router();
 
@@ -52,7 +52,16 @@ router.get('/tracks', requireAuth, attachUser, async (req, res) => {
     orderBy: { createdAt: 'desc' },
     take: 100
   });
-  res.json({ ok: true, tracks });
+  // Generate signed cover URLs for tracks that have a cover S3 key
+  const tracksWithCovers = await Promise.all(tracks.map(async (t) => {
+    if (t.coverUrl && t.coverUrl.startsWith('covers/')) {
+      try {
+        t = { ...t, coverUrl: await getSignedStreamUrl(t.coverUrl) };
+      } catch { /* keep original */ }
+    }
+    return t;
+  }));
+  res.json({ ok: true, tracks: tracksWithCovers });
 });
 
 router.get('/tracks/:id', requireAuth, attachUser, async (req, res) => {
@@ -177,7 +186,15 @@ const coverUpload = multer({
 });
 
 router.get('/admin/tracks', requireAuth, requireAdmin, async (req, res) => {
-  const tracks = await prisma.track.findMany({ orderBy: { createdAt: 'desc' }, take: 200 });
+  const rawTracks = await prisma.track.findMany({ orderBy: { createdAt: 'desc' }, take: 200 });
+  const tracks = await Promise.all(rawTracks.map(async (t) => {
+    if (t.coverUrl && t.coverUrl.startsWith('covers/')) {
+      try {
+        t = { ...t, coverUrl: await getSignedStreamUrl(t.coverUrl) };
+      } catch { /* keep original */ }
+    }
+    return t;
+  }));
   res.json({ ok: true, tracks });
 });
 
@@ -223,11 +240,10 @@ router.post('/admin/tracks/:id/cover', requireAuth, requireAdmin, coverUpload.si
   const s3Key = `covers/${trackId}_cover${ext}`;
   await uploadToS3(req.file.path, s3Key, req.file.mimetype || 'image/jpeg');
 
-  const coverUrl = getPublicCoverUrl(s3Key);
-
+  // Save S3 key, not a public URL — signed URL generated at query time
   const updated = await prisma.track.update({
     where: { id: trackId },
-    data: { coverUrl }
+    data: { coverUrl: s3Key }
   });
   res.json({ ok: true, track: updated });
 });
