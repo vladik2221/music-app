@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { api, fetchStreamBlobUrl, login, tg, getToken, adminCoverUpload } from "./api.js";
+import { useCallback } from "react";
 import SpotifyPlayer from "./components/SpotifyPlayer";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -260,7 +261,7 @@ const S = {
 
 // ─── components ─────────────────────────────────────────────────────────────
 
-function TrackCard({ t, idx, list, onPlay, onToggleFav, fav, isPlaying }) {
+function TrackCard({ t, idx, list, onPlay, onToggleFav, fav, isPlaying, extraBadge, onAddToPlaylist }) {
   return (
     <div
       style={{
@@ -289,6 +290,10 @@ function TrackCard({ t, idx, list, onPlay, onToggleFav, fav, isPlaying }) {
           {fav ? "♥" : "♡"}
         </button>
         {isPlaying && <span style={{ fontSize: 11, color: "#1db954" }}>▶ играет</span>}
+        {!isPlaying && extraBadge && <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{extraBadge}</span>}
+        {onAddToPlaylist && !isPlaying && !extraBadge && (
+          <button onClick={() => onAddToPlaylist(t)} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.3)", fontSize: 16, cursor: "pointer", padding: 2 }}>+</button>
+        )}
       </div>
     </div>
   );
@@ -337,9 +342,24 @@ export default function App() {
 
   useEffect(() => { boot(); }, []);
 
+  const [userPlaylists, setUserPlaylists] = useState([]);
+  const [addToPlaylistTrack, setAddToPlaylistTrack] = useState(null); // track being added
+
   async function refreshFavorites() {
     const f = await api.favorites();
     setFavorites(f.favorites || []);
+  }
+
+  async function refreshPlaylists() {
+    const r = await api.playlists();
+    setUserPlaylists(r.playlists || []);
+  }
+
+  useEffect(() => { if (ready) refreshPlaylists(); }, [ready]);
+
+  async function addTrackToPlaylist(playlistId, trackId) {
+    await api.playlistAddTrack(playlistId, trackId);
+    setAddToPlaylistTrack(null);
   }
 
   async function toggleFav(trackId) {
@@ -357,6 +377,8 @@ export default function App() {
     try {
       const url = await fetchStreamBlobUrl(track.id);
       setAudioUrl(url);
+      // Record listen asynchronously — don't block playback
+      api.recordListen(track.id).catch(() => {});
     } catch (e) {
       setError(String(e.message || e));
     }
@@ -470,6 +492,7 @@ export default function App() {
                     onPlay={play} onToggleFav={toggleFav}
                     fav={isFav.has(t.id)}
                     isPlaying={current?.id === t.id}
+                    onAddToPlaylist={setAddToPlaylistTrack}
                   />
                 ))}
               </div>
@@ -648,8 +671,114 @@ export default function App() {
       </div>
     );
 
+    const [adminTab, setAdminTab] = useState("tracks");
+    const [artists, setArtists] = useState([]);
+    const [artistName, setArtistName] = useState("");
+    const [artistBio, setArtistBio] = useState("");
+    const [artistPhotoById, setArtistPhotoById] = useState({});
+    const [editArtistById, setEditArtistById] = useState({});
+
+    useEffect(() => {
+      api.adminArtists().then(r => setArtists(r.artists || [])).catch(() => {});
+    }, [adminTab]);
+
+    async function createArtist() {
+      if (!artistName.trim()) return;
+      setBusy(true);
+      try {
+        await api.adminCreateArtist(artistName.trim(), artistBio.trim());
+        setArtistName(""); setArtistBio("");
+        const r = await api.adminArtists(); setArtists(r.artists || []);
+      } catch (e) { setAdminError(String(e.message || e)); }
+      finally { setBusy(false); }
+    }
+
+    async function saveArtist(id) {
+      const e = editArtistById[id]; if (!e) return;
+      setBusy(true);
+      try {
+        await api.adminUpdateArtist(id, e.name, e.bio);
+        setEditArtistById(s => { const n = {...s}; delete n[id]; return n; });
+        const r = await api.adminArtists(); setArtists(r.artists || []);
+      } catch (e) { setAdminError(String(e.message || e)); }
+      finally { setBusy(false); }
+    }
+
+    async function uploadArtistPhoto(id) {
+      const f = artistPhotoById[id]; if (!f) return;
+      setBusy(true);
+      try {
+        await api.adminArtistPhoto(id, f);
+        setArtistPhotoById(s => { const n = {...s}; delete n[id]; return n; });
+        const r = await api.adminArtists(); setArtists(r.artists || []);
+      } catch (e) { setAdminError(String(e.message || e)); }
+      finally { setBusy(false); }
+    }
+
     return (
       <div style={S.page}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          {[["tracks", "Треки"], ["artists", "Артисты"]].map(([key, label]) => (
+            <button key={key} onClick={() => setAdminTab(key)} style={{
+              ...(adminTab === key ? S.btnPrimary : S.btnSecondary),
+              borderRadius: 20, padding: "7px 16px", fontSize: 13,
+            }}>{label}</button>
+          ))}
+        </div>
+
+        {adminError && <div style={S.errorBox}>{adminError}</div>}
+
+        {adminTab === "artists" && (
+          <div>
+            <div style={S.card}>
+              <div style={S.cardTitle}>Добавить артиста</div>
+              <input value={artistName} onChange={e => setArtistName(e.target.value)} placeholder="Имя артиста" style={S.adminInput} />
+              <input value={artistBio} onChange={e => setArtistBio(e.target.value)} placeholder="Bio (опционально)" style={{ ...S.adminInput, marginBottom: 8 }} />
+              <button disabled={busy || !artistName.trim()} style={S.btnPrimary} onClick={createArtist}>➕ Создать</button>
+            </div>
+
+            {artists.map(a => {
+              const editing = editArtistById[a.id];
+              return (
+                <div key={a.id} style={S.card}>
+                  {editing ? (
+                    <div>
+                      <input value={editing.name} onChange={e => setEditArtistById(s => ({ ...s, [a.id]: { ...s[a.id], name: e.target.value } }))}
+                        placeholder="Имя" style={S.adminInput} />
+                      <input value={editing.bio} onChange={e => setEditArtistById(s => ({ ...s, [a.id]: { ...s[a.id], bio: e.target.value } }))}
+                        placeholder="Bio" style={{ ...S.adminInput, marginBottom: 8 }} />
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button disabled={busy} style={S.btnPrimary} onClick={() => saveArtist(a.id)}>✓ Сохранить</button>
+                        <button style={S.btnSecondary} onClick={() => setEditArtistById(s => { const n = {...s}; delete n[a.id]; return n; })}>Отмена</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+                      <div style={{ width: 44, height: 44, borderRadius: "50%", overflow: "hidden", background: "rgba(255,255,255,0.08)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        {a.photoUrl ? <img src={a.photoUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" /> : "🎤"}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>{a.name}</div>
+                        {a.bio && <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.bio}</div>}
+                      </div>
+                      <button style={{ ...S.btnSecondary, padding: "5px 10px", fontSize: 12 }}
+                        onClick={() => setEditArtistById(s => ({ ...s, [a.id]: { name: a.name, bio: a.bio || "" } }))}>✏️</button>
+                    </div>
+                  )}
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginBottom: 4 }}>📷 Фото</div>
+                  <input type="file" accept="image/*"
+                    onChange={e => setArtistPhotoById(s => ({ ...s, [a.id]: e.target.files?.[0] }))}
+                    style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginBottom: 6 }} />
+                  <button disabled={busy || !artistPhotoById[a.id]} style={S.btnSecondary} onClick={() => uploadArtistPhoto(a.id)}>
+                    📷 Upload фото
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {adminTab === "tracks" && <div>
         <div style={S.sectionTitle}>Управление треками</div>
 
         {adminError && <div style={S.errorBox}>{adminError}</div>}
@@ -760,10 +889,303 @@ export default function App() {
     );
   }
 
+
+  // ── Page: History ──────────────────────────────────────────────────────────
+
+  function PageHistory() {
+    const [history, setHistory] = useState([]);
+    const [topTracks, setTopTracks] = useState([]);
+    const [tab, setTab] = useState("recent");
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+      Promise.all([api.history(), api.topTracks()])
+        .then(([h, t]) => { setHistory(h.history || []); setTopTracks(t.topTracks || []); })
+        .catch(() => {})
+        .finally(() => setLoading(false));
+    }, []);
+
+    const list = tab === "recent" ? history : topTracks;
+
+    return (
+      <div style={S.page}>
+        <div style={S.sectionTitle}>История</div>
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          {[["recent", "Недавние"], ["top", "Топ треков"]].map(([key, label]) => (
+            <button key={key} onClick={() => setTab(key)} style={{
+              ...( tab === key ? S.btnPrimary : S.btnSecondary ),
+              borderRadius: 20, padding: "7px 16px", fontSize: 13,
+            }}>{label}</button>
+          ))}
+        </div>
+
+        {loading && <div style={S.empty}>Загрузка...</div>}
+        {!loading && list.length === 0 && (
+          <div style={S.empty}>Пока пусто — начни слушать треки</div>
+        )}
+
+        <div style={S.grid}>
+          {list.map((t, idx) => (
+            <TrackCard
+              key={t.id} t={t} idx={idx} list={list}
+              onPlay={play} onToggleFav={toggleFav}
+              fav={isFav.has(t.id)} isPlaying={current?.id === t.id}
+              extraBadge={tab === "top" && t.userPlayCount ? `▶ ${t.userPlayCount}` : null}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Page: Playlists ─────────────────────────────────────────────────────────
+
+  function PagePlaylists() {
+    const [playlists, setPlaylists] = useState([]);
+    const [newName, setNewName] = useState("");
+    const [creating, setCreating] = useState(false);
+    const [openId, setOpenId] = useState(null);
+    const [openPlaylist, setOpenPlaylist] = useState(null);
+    const [renameId, setRenameId] = useState(null);
+    const [renameName, setRenameName] = useState("");
+    const [busy, setBusy] = useState(false);
+
+    async function load() {
+      const r = await api.playlists(); setPlaylists(r.playlists || []);
+    }
+    useEffect(() => { load(); }, []);
+
+    async function openPlaylistPage(id) {
+      const r = await api.playlistGet(id);
+      setOpenPlaylist(r.playlist);
+      setOpenId(id);
+    }
+
+    async function create() {
+      if (!newName.trim()) return;
+      setBusy(true);
+      try { await api.playlistCreate(newName.trim()); setNewName(""); setCreating(false); await load(); }
+      catch (e) { console.error(e); } finally { setBusy(false); }
+    }
+
+    async function rename(id) {
+      if (!renameName.trim()) return;
+      setBusy(true);
+      try { await api.playlistRename(id, renameName.trim()); setRenameId(null); await load(); if (openPlaylist?.id === id) await openPlaylistPage(id); }
+      catch (e) { console.error(e); } finally { setBusy(false); }
+    }
+
+    async function del(id) {
+      setBusy(true);
+      try { await api.playlistDelete(id); if (openId === id) { setOpenId(null); setOpenPlaylist(null); } await load(); }
+      catch (e) { console.error(e); } finally { setBusy(false); }
+    }
+
+    async function removeTrack(playlistId, trackId) {
+      await api.playlistDelTrack(playlistId, trackId);
+      await openPlaylistPage(playlistId);
+    }
+
+    // Playlist detail view
+    if (openId && openPlaylist) {
+      const tracks = openPlaylist.tracks || [];
+      return (
+        <div style={S.page}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+            <button onClick={() => { setOpenId(null); setOpenPlaylist(null); }} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.6)", fontSize: 22, cursor: "pointer", padding: 0 }}>‹</button>
+            {renameId === openId ? (
+              <div style={{ display: "flex", gap: 8, flex: 1 }}>
+                <input value={renameName} onChange={e => setRenameName(e.target.value)}
+                  style={{ ...S.searchInput, flex: 1 }} onKeyDown={e => e.key === "Enter" && rename(openId)} autoFocus />
+                <button style={S.btnPrimary} onClick={() => rename(openId)}>✓</button>
+                <button style={S.btnSecondary} onClick={() => setRenameId(null)}>✕</button>
+              </div>
+            ) : (
+              <>
+                <div style={{ ...S.sectionTitle, margin: 0, flex: 1 }}>{openPlaylist.name}</div>
+                <button onClick={() => { setRenameId(openId); setRenameName(openPlaylist.name); }} style={{ ...S.btnSecondary, padding: "5px 10px", fontSize: 12 }}>✏️</button>
+                <button onClick={() => del(openId)} style={{ background: "rgba(255,59,48,0.15)", color: "#ff6b6b", border: "1px solid rgba(255,59,48,0.3)", borderRadius: 20, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>🗑</button>
+              </>
+            )}
+          </div>
+
+          {tracks.length === 0 ? (
+            <div style={S.empty}>Плейлист пуст — добавь треки через ♡ в каталоге</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {tracks.map((t, idx) => (
+                <div key={t.id} style={{ ...S.card, display: "flex", alignItems: "center", gap: 12, padding: "10px 12px" }}>
+                  <div style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden", background: "rgba(255,255,255,0.08)", flexShrink: 0 }}
+                    onClick={() => play(t, tracks, idx)}>
+                    {t.coverUrl ? <img src={t.coverUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" />
+                      : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>🎵</div>}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={() => play(t, tracks, idx)}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: current?.id === t.id ? "#1db954" : "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</div>
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.45)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.artist || "—"}</div>
+                  </div>
+                  <button onClick={() => removeTrack(openId, t.id)} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.3)", fontSize: 18, cursor: "pointer", padding: 4 }}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div style={S.page}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <div style={S.sectionTitle}>Плейлисты</div>
+          <button style={S.btnPrimary} onClick={() => setCreating(c => !c)}>+ Создать</button>
+        </div>
+
+        {creating && (
+          <div style={{ ...S.card, marginBottom: 12, display: "flex", gap: 8 }}>
+            <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Название плейлиста"
+              style={{ ...S.searchInput, flex: 1 }} onKeyDown={e => e.key === "Enter" && create()} autoFocus />
+            <button style={S.btnPrimary} disabled={busy} onClick={create}>✓</button>
+          </div>
+        )}
+
+        {playlists.length === 0 && !creating && (
+          <div style={S.empty}>Нет плейлистов — создай первый</div>
+        )}
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {playlists.map(pl => {
+            const count = pl._count?.playlistTracks ?? 0;
+            const previewTrack = pl.playlistTracks?.[0]?.track;
+            return (
+              <div key={pl.id} style={{ ...S.card, display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}
+                onClick={() => openPlaylistPage(pl.id)}>
+                <div style={{ width: 52, height: 52, borderRadius: 10, overflow: "hidden", background: "rgba(255,255,255,0.08)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>
+                  {previewTrack?.coverUrl ? <img src={previewTrack.coverUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" /> : "🎵"}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pl.name}</div>
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>{count} {count === 1 ? "трек" : count < 5 ? "трека" : "треков"}</div>
+                </div>
+                <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 18 }}>›</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Page: Artist ────────────────────────────────────────────────────────────
+
+  function PageArtist({ artistId }) {
+    const [artist, setArtist] = useState(null);
+    const [tracks, setTracks] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+      api.artist(artistId)
+        .then(r => { setArtist(r.artist); setTracks(r.tracks || []); })
+        .catch(() => {})
+        .finally(() => setLoading(false));
+    }, [artistId]);
+
+    if (loading) return <div style={{ ...S.page }}><div style={S.empty}>Загрузка...</div></div>;
+    if (!artist) return <div style={S.page}><div style={S.empty}>Артист не найден</div></div>;
+
+    return (
+      <div style={S.page}>
+        {/* Artist hero */}
+        <div style={{ position: "relative", marginBottom: 20, borderRadius: 20, overflow: "hidden", minHeight: 180 }}>
+          {artist.photoUrl ? (
+            <img src={artist.photoUrl} alt={artist.name} style={{ width: "100%", height: 220, objectFit: "cover", display: "block" }} />
+          ) : (
+            <div style={{ height: 180, background: "linear-gradient(135deg, #1a1a2e, #16213e)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 64 }}>🎤</div>
+          )}
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(0deg, rgba(0,0,0,0.85) 0%, transparent 60%)" }} />
+          <div style={{ position: "absolute", bottom: 16, left: 16 }}>
+            <div style={{ fontSize: 26, fontWeight: 800, color: "#fff", letterSpacing: -0.5 }}>{artist.name}</div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginTop: 2 }}>{tracks.length} {tracks.length === 1 ? "трек" : tracks.length < 5 ? "трека" : "треков"}</div>
+          </div>
+        </div>
+
+        {artist.bio && (
+          <div style={{ ...S.card, marginBottom: 20 }}>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", lineHeight: 1.6 }}>{artist.bio}</div>
+          </div>
+        )}
+
+        <div style={{ ...S.sectionTitle, marginBottom: 12 }}>Треки</div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {tracks.map((t, idx) => (
+            <div key={t.id} style={{ ...S.card, display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", cursor: "pointer",
+              border: current?.id === t.id ? "1px solid rgba(29,185,84,0.4)" : "1px solid transparent" }}
+              onClick={() => play(t, tracks, idx)}>
+              <div style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden", background: "rgba(255,255,255,0.08)", flexShrink: 0 }}>
+                {t.coverUrl ? <img src={t.coverUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" />
+                  : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>🎵</div>}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: current?.id === t.id ? "#1db954" : "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</div>
+                {t.playCount > 0 && <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 2 }}>▶ {t.playCount.toLocaleString()}</div>}
+              </div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", flexShrink: 0 }}>#{idx + 1}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Page: Artists list ──────────────────────────────────────────────────────
+
+  function PageArtists() {
+    const [artists, setArtists] = useState([]);
+    const [openId, setOpenId] = useState(null);
+
+    useEffect(() => { api.artists().then(r => setArtists(r.artists || [])).catch(() => {}); }, []);
+
+    if (openId) return (
+      <div>
+        <div style={{ ...S.page, paddingTop: 8 }}>
+          <button onClick={() => setOpenId(null)} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.6)", fontSize: 22, cursor: "pointer", padding: "0 0 8px 0" }}>‹ Назад</button>
+        </div>
+        <PageArtist artistId={openId} />
+      </div>
+    );
+
+    return (
+      <div style={S.page}>
+        <div style={S.sectionTitle}>Артисты</div>
+        {artists.length === 0 && <div style={S.empty}>Нет артистов</div>}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {artists.map(a => (
+            <div key={a.id} style={{ ...S.card, display: "flex", alignItems: "center", gap: 14, cursor: "pointer" }}
+              onClick={() => setOpenId(a.id)}>
+              <div style={{ width: 52, height: 52, borderRadius: "50%", overflow: "hidden", background: "rgba(255,255,255,0.08)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>
+                {a.photoUrl ? <img src={a.photoUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" /> : "🎤"}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: "#fff" }}>{a.name}</div>
+                {a.bio && <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.bio}</div>}
+              </div>
+              <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 18 }}>›</span>
+            </div>
+          ))}
+        </div>
+        </div>}
+      </div>
+    );
+  }
+
   // ── routing ───────────────────────────────────────────────────────────────
 
   let page;
   if (route.startsWith("#/favorites")) page = <PageFavorites />;
+  else if (route.startsWith("#/history")) page = <PageHistory />;
+  else if (route.startsWith("#/playlists")) page = <PagePlaylists />;
+  else if (route.startsWith("#/artists")) page = <PageArtists />;
   else if (route.startsWith("#/profile")) page = <PageProfile />;
   else if (route.startsWith("#/billing/return")) page = <PageBillingReturn />;
   else if (route.startsWith("#/admin")) page = <PageAdmin />;
@@ -771,7 +1193,9 @@ export default function App() {
 
   const tabs = [
     { href: "#/", icon: "🏠", label: "Каталог", match: (r) => r === "#/" || r === "" },
-    { href: "#/favorites", icon: "♥", label: "Избранное", match: (r) => r.startsWith("#/favorites") },
+    { href: "#/playlists", icon: "🎵", label: "Плейлисты", match: (r) => r.startsWith("#/playlists") },
+    { href: "#/artists", icon: "🎤", label: "Артисты", match: (r) => r.startsWith("#/artists") },
+    { href: "#/history", icon: "🕐", label: "История", match: (r) => r.startsWith("#/history") },
     { href: "#/profile", icon: "👤", label: "Профиль", match: (r) => r.startsWith("#/profile") },
     ...(isAdmin ? [{ href: "#/admin", icon: "🛠", label: "Admin", match: (r) => r.startsWith("#/admin") }] : []),
   ];
@@ -802,6 +1226,34 @@ export default function App() {
           onNext={playNext}
         />
       </div>
+
+      {/* Add to playlist modal */}
+      {addToPlaylistTrack && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "flex-end" }}
+          onClick={() => setAddToPlaylistTrack(null)}>
+          <div style={{ width: "100%", background: "#1a1a1a", borderRadius: "20px 20px 0 0", padding: "20px 20px calc(env(safe-area-inset-bottom) + 20px)" }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", marginBottom: 4 }}>Добавить в плейлист</div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginBottom: 16 }}>{addToPlaylistTrack.title}</div>
+            {userPlaylists.length === 0 ? (
+              <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13, textAlign: "center", padding: "16px 0" }}>
+                Нет плейлистов — создай в разделе «Плейлисты»
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 280, overflowY: "auto" }}>
+                {userPlaylists.map(pl => (
+                  <button key={pl.id} onClick={() => addTrackToPlaylist(pl.id, addToPlaylistTrack.id)}
+                    style={{ background: "rgba(255,255,255,0.07)", border: "none", borderRadius: 12, padding: "12px 16px",
+                      color: "#fff", fontSize: 14, fontWeight: 500, cursor: "pointer", textAlign: "left" }}>
+                    🎵 {pl.name}
+                    <span style={{ float: "right", color: "rgba(255,255,255,0.3)", fontSize: 12 }}>{pl._count?.playlistTracks ?? 0} тр.</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Tab Bar */}
       <div style={{

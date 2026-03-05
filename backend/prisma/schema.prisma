@@ -18,9 +18,22 @@ model User {
   trialEndsAt    DateTime?
   accessEndsAt   DateTime?
 
-  favorites Favorite[]
-  payments  Payment[]
+  favorites      Favorite[]
+  payments       Payment[]
+  playlists      Playlist[]
+  listenHistory  ListenHistory[]
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Artist {
+  id       String  @id @default(cuid())
+  name     String  @unique
+  bio      String?
+  photoUrl String?
+
+  tracks    Track[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -29,14 +42,20 @@ model Track {
   id          String  @id @default(cuid())
   title       String
   artist      String?
+  artistId    String?
   coverUrl    String?
   durationSec Int?
   filePath    String?
   isPublished Boolean @default(false)
+  playCount   Int     @default(0)
 
-  favorites Favorite[]
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  artistRel      Artist?         @relation(fields: [artistId], references: [id], onDelete: SetNull)
+  favorites      Favorite[]
+  playlistTracks PlaylistTrack[]
+  listenHistory  ListenHistory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Favorite {
@@ -48,6 +67,44 @@ model Favorite {
   track Track @relation(fields: [trackId], references: [id], onDelete: Cascade)
 
   @@id([userId, trackId])
+}
+
+model Playlist {
+  id     String @id @default(cuid())
+  userId String
+  name   String
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  playlistTracks PlaylistTrack[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PlaylistTrack {
+  playlistId String
+  trackId    String
+  position   Int
+  createdAt  DateTime @default(now())
+
+  playlist Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  track    Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@id([playlistId, trackId])
+  @@index([playlistId, position])
+}
+
+model ListenHistory {
+  id        String   @id @default(cuid())
+  userId    String
+  trackId   String
+  listenedAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  track Track @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@index([userId, listenedAt(sort: Desc)])
+  @@index([trackId])
 }
 
 model Payment {
