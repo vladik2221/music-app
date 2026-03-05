@@ -68,6 +68,12 @@ export const api = {
     return j;
   },
   adminPublish: (trackId) => raw(`/admin/tracks/${trackId}/publish`, { method: 'POST' }),
+  adminUpdateTrack: (trackId, title, artist) => raw(`/admin/tracks/${trackId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, artist })
+  }),
+  adminDeleteTrack: (trackId) => raw(`/admin/tracks/${trackId}`, { method: 'DELETE' }),
 };
 
 // Stream: backend redirects to signed S3 URL, we just build the src URL directly

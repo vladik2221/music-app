@@ -261,4 +261,36 @@ router.post('/admin/tracks/:id/publish', requireAuth, requireAdmin, async (req, 
   res.json({ ok: true, track: updated });
 });
 
+
+router.patch('/admin/tracks/:id', requireAuth, requireAdmin, async (req, res) => {
+  const trackId = req.params.id;
+  const { title, artist } = req.body || {};
+  const track = await prisma.track.findUnique({ where: { id: trackId } });
+  if (!track) return res.status(404).json({ ok: false, error: 'Track not found' });
+
+  const updated = await prisma.track.update({
+    where: { id: trackId },
+    data: {
+      ...(title !== undefined ? { title: String(title) } : {}),
+      ...(artist !== undefined ? { artist: artist ? String(artist) : null } : {}),
+    }
+  });
+  res.json({ ok: true, track: updated });
+});
+
+router.delete('/admin/tracks/:id', requireAuth, requireAdmin, async (req, res) => {
+  const trackId = req.params.id;
+  const track = await prisma.track.findUnique({ where: { id: trackId } });
+  if (!track) return res.status(404).json({ ok: false, error: 'Track not found' });
+
+  // Delete files from S3
+  if (track.filePath) await deleteFromS3(track.filePath);
+  if (track.coverUrl && track.coverUrl.startsWith('covers/')) await deleteFromS3(track.coverUrl);
+
+  await prisma.favorite.deleteMany({ where: { trackId } });
+  await prisma.track.delete({ where: { id: trackId } });
+
+  res.json({ ok: true });
+});
+
 export default router;

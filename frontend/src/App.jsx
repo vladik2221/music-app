@@ -561,8 +561,10 @@ export default function App() {
     const [artist, setArtist] = useState("");
     const [fileById, setFileById] = useState({});
     const [coverById, setCoverById] = useState({});
+    const [editById, setEditById] = useState({}); // { [id]: { title, artist } }
     const [busy, setBusy] = useState(false);
     const [adminError, setAdminError] = useState("");
+    const [confirmDelete, setConfirmDelete] = useState(null); // trackId to confirm
 
     async function load() {
       try {
@@ -610,6 +612,36 @@ export default function App() {
       finally { setBusy(false); }
     }
 
+    function startEdit(t) {
+      setEditById((s) => ({ ...s, [t.id]: { title: t.title, artist: t.artist || "" } }));
+    }
+
+    function cancelEdit(trackId) {
+      setEditById((s) => { const n = {...s}; delete n[trackId]; return n; });
+    }
+
+    async function saveEdit(trackId) {
+      const e = editById[trackId];
+      if (!e) return;
+      setBusy(true);
+      try {
+        await api.adminUpdateTrack(trackId, e.title, e.artist);
+        cancelEdit(trackId);
+        await load();
+      } catch (err) { setAdminError(String(err.message || err)); }
+      finally { setBusy(false); }
+    }
+
+    async function deleteTrack(trackId) {
+      setBusy(true);
+      try {
+        await api.adminDeleteTrack(trackId);
+        setConfirmDelete(null);
+        await load();
+      } catch (err) { setAdminError(String(err.message || err)); }
+      finally { setBusy(false); }
+    }
+
     if (!isAdmin) return (
       <div style={S.page}>
         <div style={S.empty}>Только для администратора</div>
@@ -633,18 +665,75 @@ export default function App() {
           </button>
         </div>
 
-        {adminTracks.map((t) => (
-          <div key={t.id} style={S.card}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ ...S.cardTitle, display: "flex", alignItems: "center", gap: 6 }}>
-                  {t.title} {t.isPublished ? "✅" : "⏳"}
+        {adminTracks.map((t) => {
+          const editing = editById[t.id];
+          const isConfirmingDelete = confirmDelete === t.id;
+          return (
+            <div key={t.id} style={{ ...S.card, border: isConfirmingDelete ? "1px solid rgba(255,59,48,0.4)" : "1px solid transparent" }}>
+
+              {/* Title row */}
+              {editing ? (
+                <div style={{ marginBottom: 10 }}>
+                  <input
+                    value={editing.title}
+                    onChange={(e) => setEditById((s) => ({ ...s, [t.id]: { ...s[t.id], title: e.target.value } }))}
+                    placeholder="Название"
+                    style={{ ...S.adminInput, marginBottom: 6 }}
+                  />
+                  <input
+                    value={editing.artist}
+                    onChange={(e) => setEditById((s) => ({ ...s, [t.id]: { ...s[t.id], artist: e.target.value } }))}
+                    placeholder="Артист"
+                    style={{ ...S.adminInput, marginBottom: 8 }}
+                  />
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button disabled={busy || !editing.title} style={S.btnPrimary} onClick={() => saveEdit(t.id)}>
+                      ✓ Сохранить
+                    </button>
+                    <button style={S.btnSecondary} onClick={() => cancelEdit(t.id)}>
+                      Отмена
+                    </button>
+                  </div>
                 </div>
-                <div style={S.cardSub}>{t.artist || "—"}</div>
-                {t.filePath && <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 4, wordBreak: "break-all" }}>{t.filePath}</div>}
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
-                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginBottom: 2 }}>🎵 Аудио</div>
+              ) : (
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: "#fff" }}>{t.title}</span>
+                      <span>{t.isPublished ? "✅" : "⏳"}</span>
+                    </div>
+                    <div style={S.cardSub}>{t.artist || "—"}</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexShrink: 0, marginLeft: 8 }}>
+                    <button
+                      onClick={() => startEdit(t)}
+                      style={{ ...S.btnSecondary, padding: "5px 10px", fontSize: 12 }}
+                    >✏️ Изменить</button>
+                    {!isConfirmingDelete ? (
+                      <button
+                        onClick={() => setConfirmDelete(t.id)}
+                        style={{ background: "rgba(255,59,48,0.15)", color: "#ff6b6b", border: "1px solid rgba(255,59,48,0.3)", borderRadius: 20, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}
+                      >🗑</button>
+                    ) : (
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          disabled={busy}
+                          onClick={() => deleteTrack(t.id)}
+                          style={{ background: "rgba(255,59,48,0.8)", color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: 12, cursor: "pointer", fontWeight: 600 }}
+                        >Удалить</button>
+                        <button
+                          onClick={() => setConfirmDelete(null)}
+                          style={S.btnSecondary}
+                        >✕</button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* File/cover upload row */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>🎵 Аудио</div>
                 <input type="file" accept="audio/*"
                   onChange={(e) => setFileById((s) => ({ ...s, [t.id]: e.target.files?.[0] }))}
                   style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }} />
@@ -652,7 +741,7 @@ export default function App() {
                   ⬆ Upload аудио
                 </button>
 
-                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 4, marginBottom: 2 }}>🖼 Обложка</div>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 4 }}>🖼 Обложка</div>
                 <input type="file" accept="image/*"
                   onChange={(e) => setCoverById((s) => ({ ...s, [t.id]: e.target.files?.[0] }))}
                   style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }} />
@@ -660,13 +749,13 @@ export default function App() {
                   🖼 Upload обложку
                 </button>
 
-                <button disabled={busy || !t.filePath || t.isPublished} style={S.btnPrimary} onClick={() => publish(t.id)}>
+                <button disabled={busy || !t.filePath || t.isPublished} style={{ ...S.btnPrimary, marginTop: 4 }} onClick={() => publish(t.id)}>
                   🚀 Publish
                 </button>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     );
   }
