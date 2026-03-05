@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { api, fetchStreamBlobUrl, login, tg, getToken } from "./api.js";
 import SpotifyPlayer from "./components/SpotifyPlayer";
 
+// ─── helpers ────────────────────────────────────────────────────────────────
+
 function useHashRoute() {
   const [route, setRoute] = useState(window.location.hash || "#/");
   useEffect(() => {
@@ -14,46 +16,304 @@ function useHashRoute() {
 
 function fmt(dt) {
   if (!dt) return "—";
-  try {
-    return new Date(dt).toLocaleString();
-  } catch {
-    return String(dt);
-  }
+  try { return new Date(dt).toLocaleString(); }
+  catch { return String(dt); }
 }
 
-function cn(...xs) {
-  return xs.filter(Boolean).join(" ");
-}
+// ─── styles ─────────────────────────────────────────────────────────────────
 
-function Icon({ children, className = "" }) {
+const S = {
+  app: {
+    minHeight: "100dvh",
+    background: "#0a0a0a",
+    color: "#fff",
+    fontFamily: "'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif",
+    paddingBottom: 140,
+  },
+  header: {
+    position: "sticky",
+    top: 0,
+    zIndex: 30,
+    background: "rgba(10,10,10,0.92)",
+    backdropFilter: "blur(16px)",
+    WebkitBackdropFilter: "blur(16px)",
+    borderBottom: "1px solid rgba(255,255,255,0.06)",
+    padding: "12px 16px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  logo: { fontSize: 17, fontWeight: 700, letterSpacing: -0.5 },
+  logoSub: { fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 1 },
+  headerBtns: { display: "flex", gap: 6 },
+  btnPrimary: {
+    background: "#1db954",
+    color: "#000",
+    border: "none",
+    borderRadius: 20,
+    padding: "6px 14px",
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: "pointer",
+  },
+  btnSecondary: {
+    background: "rgba(255,255,255,0.1)",
+    color: "#fff",
+    border: "none",
+    borderRadius: 20,
+    padding: "6px 14px",
+    fontSize: 12,
+    cursor: "pointer",
+  },
+  page: { padding: "16px 16px 0" },
+  // User card
+  userCard: {
+    background: "rgba(255,255,255,0.04)",
+    borderRadius: 16,
+    padding: "14px 16px",
+    marginBottom: 20,
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+  },
+  avatar: {
+    width: 44, height: 44,
+    borderRadius: "50%",
+    background: "linear-gradient(135deg, #1db954, #191414)",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    fontSize: 20, flexShrink: 0,
+  },
+  userName: { fontSize: 15, fontWeight: 600 },
+  userSub: { fontSize: 12, color: "rgba(255,255,255,0.45)", marginTop: 2 },
+  badge: (active) => ({
+    display: "inline-block",
+    background: active ? "rgba(29,185,84,0.2)" : "rgba(255,255,255,0.07)",
+    color: active ? "#1db954" : "rgba(255,255,255,0.4)",
+    border: `1px solid ${active ? "rgba(29,185,84,0.4)" : "rgba(255,255,255,0.1)"}`,
+    borderRadius: 10,
+    padding: "2px 8px",
+    fontSize: 11,
+    marginLeft: 6,
+  }),
+  // Search
+  searchWrap: {
+    display: "flex",
+    gap: 8,
+    marginBottom: 16,
+  },
+  searchInput: {
+    flex: 1,
+    background: "rgba(255,255,255,0.07)",
+    border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: 12,
+    padding: "10px 14px",
+    color: "#fff",
+    fontSize: 14,
+    outline: "none",
+  },
+  searchBtn: {
+    background: "#1db954",
+    border: "none",
+    borderRadius: 12,
+    padding: "10px 16px",
+    color: "#000",
+    fontWeight: 600,
+    fontSize: 13,
+    cursor: "pointer",
+    flexShrink: 0,
+  },
+  // Section title
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 700,
+    marginBottom: 14,
+    letterSpacing: -0.3,
+  },
+  // Track grid
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, 1fr)",
+    gap: 10,
+  },
+  // Track card
+  trackCard: {
+    background: "rgba(255,255,255,0.04)",
+    borderRadius: 14,
+    padding: 10,
+    cursor: "pointer",
+    transition: "background 0.15s",
+    position: "relative",
+    overflow: "hidden",
+  },
+  trackCover: {
+    width: "100%",
+    aspectRatio: "1",
+    borderRadius: 10,
+    overflow: "hidden",
+    background: "rgba(255,255,255,0.07)",
+    marginBottom: 8,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 32,
+  },
+  trackTitle: {
+    fontSize: 13,
+    fontWeight: 600,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  trackArtist: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.5)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    marginTop: 2,
+  },
+  trackFooter: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 8,
+  },
+  favBtn: (fav) => ({
+    background: "none",
+    border: "none",
+    fontSize: 16,
+    cursor: "pointer",
+    padding: 2,
+    color: fav ? "#1db954" : "rgba(255,255,255,0.3)",
+  }),
+  // Tab bar
+  tabBar: {
+    position: "fixed",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 40,
+    background: "rgba(10,10,10,0.97)",
+    borderTop: "1px solid rgba(255,255,255,0.07)",
+    backdropFilter: "blur(20px)",
+    WebkitBackdropFilter: "blur(20px)",
+    display: "flex",
+    paddingBottom: "env(safe-area-inset-bottom)",
+  },
+  tabItem: (active) => ({
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "8px 0 10px",
+    gap: 3,
+    cursor: "pointer",
+    border: "none",
+    background: "none",
+    color: active ? "#1db954" : "rgba(255,255,255,0.4)",
+    fontSize: 10,
+    fontWeight: active ? 600 : 400,
+    transition: "color 0.15s",
+  }),
+  tabIcon: { fontSize: 20, lineHeight: 1 },
+  // Error
+  errorBox: {
+    background: "rgba(255,59,48,0.1)",
+    border: "1px solid rgba(255,59,48,0.3)",
+    borderRadius: 12,
+    padding: "10px 14px",
+    fontSize: 13,
+    color: "#ff6b6b",
+    marginBottom: 16,
+  },
+  // Empty state
+  empty: {
+    textAlign: "center",
+    padding: "40px 16px",
+    color: "rgba(255,255,255,0.3)",
+    fontSize: 14,
+  },
+  // Admin input
+  adminInput: {
+    width: "100%",
+    boxSizing: "border-box",
+    background: "rgba(255,255,255,0.07)",
+    border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: 12,
+    padding: "10px 14px",
+    color: "#fff",
+    fontSize: 14,
+    outline: "none",
+    marginBottom: 8,
+  },
+  card: {
+    background: "rgba(255,255,255,0.04)",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+  },
+  cardTitle: { fontSize: 14, fontWeight: 600, marginBottom: 6 },
+  cardSub: { fontSize: 12, color: "rgba(255,255,255,0.45)", lineHeight: 1.5 },
+};
+
+// ─── components ─────────────────────────────────────────────────────────────
+
+function TrackCard({ t, idx, list, onPlay, onToggleFav, fav, isPlaying }) {
   return (
-    <span className={cn("inline-flex items-center justify-center", className)}>
-      {children}
-    </span>
+    <div
+      style={{
+        ...S.trackCard,
+        background: isPlaying ? "rgba(29,185,84,0.1)" : S.trackCard.background,
+        border: isPlaying ? "1px solid rgba(29,185,84,0.3)" : "1px solid transparent",
+      }}
+    >
+      <div style={S.trackCover} onClick={() => onPlay(t, list, idx)}>
+        {t.coverUrl ? (
+          <img
+            src={t.coverUrl.startsWith("http") ? t.coverUrl : (import.meta.env.VITE_API_BASE_URL || "") + t.coverUrl}
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            alt={t.title}
+          />
+        ) : "🎵"}
+      </div>
+
+      <div onClick={() => onPlay(t, list, idx)}>
+        <div style={S.trackTitle}>{t.title}</div>
+        <div style={S.trackArtist}>{t.artist || "—"}</div>
+      </div>
+
+      <div style={S.trackFooter}>
+        <button style={S.favBtn(fav)} onClick={() => onToggleFav(t.id)}>
+          {fav ? "♥" : "♡"}
+        </button>
+        {isPlaying && <span style={{ fontSize: 11, color: "#1db954" }}>▶ играет</span>}
+      </div>
+    </div>
   );
 }
 
+// ─── main app ───────────────────────────────────────────────────────────────
+
 export default function App() {
   const route = useHashRoute();
+  const playerRef = useRef(null);
 
   const [ready, setReady] = useState(false);
   const [me, setMe] = useState(null);
-
   const [tracks, setTracks] = useState([]);
   const [favorites, setFavorites] = useState([]);
   const [q, setQ] = useState("");
-
   const [current, setCurrent] = useState(null);
   const [audioUrl, setAudioUrl] = useState("");
-  const audioRef = useRef(null);
-
   const [queue, setQueue] = useState([]);
   const [queueIndex, setQueueIndex] = useState(-1);
-
   const [error, setError] = useState("");
 
   const isFav = useMemo(() => new Set(favorites.map((t) => t.id)), [favorites]);
   const isAdmin = me?.user?.role === "admin";
+  const hasAccess = me?.accessActive;
 
   async function boot() {
     setError("");
@@ -61,15 +321,11 @@ export default function App() {
       if (!getToken()) await login();
       const m = await api.me();
       setMe(m);
-
       const t = await api.tracks("");
       setTracks(t.tracks || []);
       setQueue(t.tracks || []);
-      setQueueIndex(-1);
-
       const f = await api.favorites();
       setFavorites(f.favorites || []);
-
       tg()?.ready?.();
       tg()?.expand?.();
       setReady(true);
@@ -79,9 +335,7 @@ export default function App() {
     }
   }
 
-  useEffect(() => {
-    boot();
-  }, []);
+  useEffect(() => { boot(); }, []);
 
   async function refreshFavorites() {
     const f = await api.favorites();
@@ -98,14 +352,11 @@ export default function App() {
     setError("");
     setCurrent(track);
     setAudioUrl("");
-
     if (Array.isArray(list)) setQueue(list);
     if (typeof idx === "number") setQueueIndex(idx);
-
     try {
       const url = await fetchStreamBlobUrl(track.id);
       setAudioUrl(url);
-      setTimeout(() => audioRef.current?.play?.(), 50);
     } catch (e) {
       setError(String(e.message || e));
     }
@@ -118,8 +369,7 @@ export default function App() {
   }
 
   function playNext() {
-    if (queueIndex < 0) return;
-    if (queueIndex >= queue.length - 1) return;
+    if (queueIndex < 0 || queueIndex >= queue.length - 1) return;
     const i = queueIndex + 1;
     play(queue[i], queue, i);
   }
@@ -132,400 +382,262 @@ export default function App() {
   }
 
   async function startTrial() {
-    const m = await api.trialStart();
-    setMe(m);
+    try {
+      const m = await api.trialStart();
+      setMe(m);
+    } catch (e) {
+      setError(String(e.message || e));
+    }
   }
 
   async function subscribe() {
-    const p = await api.createPayment();
-    if (p.confirmationUrl) window.location.href = p.confirmationUrl;
+    try {
+      const p = await api.createPayment();
+      if (p.confirmationUrl) window.location.href = p.confirmationUrl;
+    } catch (e) {
+      setError(String(e.message || e));
+    }
   }
 
-  function SidebarLink({ href, active, children }) {
+  // ── pages ─────────────────────────────────────────────────────────────────
+
+  function PageCatalog() {
     return (
-      <a
-        href={href}
-        className={cn(
-          "flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition",
-          active
-            ? "bg-white/10 text-white"
-            : "text-white/70 hover:bg-white/5 hover:text-white",
+      <div style={S.page}>
+        {/* User card */}
+        {ready && me && (
+          <div style={S.userCard}>
+            <div style={S.avatar}>🎧</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={S.userName}>
+                {me.user?.firstName || me.user?.username || "Слушатель"}
+                <span style={S.badge(hasAccess)}>{hasAccess ? "✓ Доступ" : "Нет доступа"}</span>
+              </div>
+              <div style={S.userSub}>{me.user?.role || "user"}</div>
+            </div>
+            {!hasAccess && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                <button style={S.btnPrimary} onClick={startTrial}>Пробный</button>
+                <button style={S.btnSecondary} onClick={subscribe}>Купить</button>
+              </div>
+            )}
+          </div>
         )}
-      >
-        {children}
-      </a>
-    );
-  }
 
-  function TopBar() {
-    return (
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-white">
-          <div className="text-lg font-semibold tracking-tight">🎧 Music</div>
-          <div className="text-xs text-white/60">Telegram Mini App</div>
-        </div>
+        {error && <div style={S.errorBox}>{error}</div>}
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={startTrial}
-            className="rounded-xl bg-emerald-500/90 px-3 py-2 text-sm font-semibold text-black hover:bg-emerald-400"
-          >
-            Trial
-          </button>
-          <button
-            onClick={subscribe}
-            className="rounded-xl bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-white/90"
-          >
-            Подписка
-          </button>
-          <button
-            onClick={boot}
-            className="rounded-xl bg-white/10 px-3 py-2 text-sm text-white hover:bg-white/15"
-          >
-            Обновить
-          </button>
-        </div>
+        {!ready && (
+          <div style={{ ...S.card, textAlign: "center" }}>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", marginBottom: 12 }}>
+              Открой Mini App внутри Telegram
+            </div>
+            <button style={S.btnPrimary} onClick={boot}>Попробовать снова</button>
+          </div>
+        )}
+
+        {/* Search */}
+        {ready && (
+          <>
+            <div style={S.searchWrap}>
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && doSearch()}
+                placeholder="Поиск треков..."
+                style={S.searchInput}
+              />
+              <button style={S.searchBtn} onClick={doSearch}>Найти</button>
+              {q && (
+                <button style={S.btnSecondary} onClick={async () => {
+                  setQ("");
+                  const t = await api.tracks("");
+                  setTracks(t.tracks || []);
+                  setQueue(t.tracks || []);
+                  setQueueIndex(-1);
+                }}>✕</button>
+              )}
+            </div>
+
+            <div style={S.sectionTitle}>Треки</div>
+
+            {tracks.length === 0 ? (
+              <div style={S.empty}>Треков не найдено</div>
+            ) : (
+              <div style={S.grid}>
+                {tracks.map((t, idx) => (
+                  <TrackCard
+                    key={t.id} t={t} idx={idx} list={tracks}
+                    onPlay={play} onToggleFav={toggleFav}
+                    fav={isFav.has(t.id)}
+                    isPlaying={current?.id === t.id}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        )}
       </div>
     );
   }
 
-  function StatPill({ label, value }) {
+  function PageFavorites() {
     return (
-      <div className="rounded-xl bg-white/5 px-3 py-2">
-        <div className="text-[11px] uppercase tracking-wide text-white/50">
-          {label}
-        </div>
-        <div className="text-sm font-medium text-white">{value}</div>
+      <div style={S.page}>
+        <div style={S.sectionTitle}>Избранное</div>
+        {favorites.length === 0 ? (
+          <div style={S.empty}>Пока пусто — нажми ♡ у любого трека</div>
+        ) : (
+          <div style={S.grid}>
+            {favorites.map((t, idx) => (
+              <TrackCard
+                key={t.id} t={t} idx={idx} list={favorites}
+                onPlay={play} onToggleFav={toggleFav}
+                fav={isFav.has(t.id)}
+                isPlaying={current?.id === t.id}
+              />
+            ))}
+          </div>
+        )}
       </div>
     );
   }
 
-  function HeaderCards() {
+  function PageProfile() {
     return (
-      <div className="grid gap-3 md:grid-cols-3">
-        <StatPill
-          label="Пользователь"
-          value={
-            me?.user?.firstName ||
-            me?.user?.username ||
-            me?.user?.telegramId ||
-            "—"
-          }
-        />
-        <StatPill label="Роль" value={me?.user?.role || "—"} />
-        <StatPill
-          label="Доступ"
-          value={me?.accessActive ? "✅ активен" : "❌ нет"}
-        />
-        <div className="md:col-span-3 rounded-2xl bg-white/5 p-3 text-xs text-white/60">
-          trialEndsAt: {fmt(me?.user?.trialEndsAt)} <br />
-          accessEndsAt: {fmt(me?.user?.accessEndsAt)}
-        </div>
-      </div>
-    );
-  }
+      <div style={S.page}>
+        <div style={S.sectionTitle}>Профиль</div>
 
-  function TrackCard({ t, idx, list, onPlay, onToggleFav, fav }) {
-    return (
-      <div className="group rounded-2xl bg-white/5 p-3 hover:bg-white/10 transition">
-        {/* cover */}
-        <div className="relative aspect-square overflow-hidden rounded-xl bg-white/10">
-          {t.coverUrl ? (
-            <img
-              src={
-                t.coverUrl.startsWith("http")
-                  ? t.coverUrl
-                  : import.meta.env.VITE_API_BASE_URL + t.coverUrl
-              }
-              className="h-full w-full object-cover"
-              alt={t.title}
-            />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center text-3xl text-white/60">
-              🎵
+        <div style={S.card}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={S.avatar}>👤</div>
+            <div>
+              <div style={S.cardTitle}>{me?.user?.firstName || me?.user?.username || "—"}</div>
+              <div style={S.cardSub}>@{me?.user?.username || "—"} · {me?.user?.role}</div>
+            </div>
+          </div>
+        </div>
+
+        <div style={S.card}>
+          <div style={S.cardTitle}>Подписка</div>
+          <div style={S.cardSub}>
+            Статус: {hasAccess ? "✅ Активна" : "❌ Не активна"}<br />
+            Триал: {fmt(me?.user?.trialEndsAt)}<br />
+            Доступ до: {fmt(me?.user?.accessEndsAt)}
+          </div>
+          {!hasAccess && (
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <button style={S.btnPrimary} onClick={startTrial}>Пробный период</button>
+              <button style={S.btnSecondary} onClick={subscribe}>Купить подписку</button>
             </div>
           )}
-
-          {/* play button overlay */}
-          <button
-            onClick={() => onPlay(t, list, idx)}
-            className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition
-                     rounded-full bg-[var(--accent)] text-black w-12 h-12 flex items-center justify-center shadow-lg"
-            title="Play"
-          >
-            ▶
-          </button>
         </div>
 
-        {/* title/artist */}
-        <div className="mt-3 min-w-0">
-          <div className="truncate text-sm font-semibold text-white">
-            {t.title}
+        <div style={S.card}>
+          <div style={S.cardTitle}>Оплата</div>
+          <div style={S.cardSub}>
+            После оплаты нажми «Обновить» чтобы активировать доступ.
           </div>
-          <div className="truncate text-xs text-white/60">
-            {t.artist || "—"}
-          </div>
-        </div>
-
-        {/* actions */}
-        <div className="mt-3 flex items-center justify-between">
-          <button
-            onClick={() => onToggleFav(t.id)}
-            className="rounded-xl bg-white/10 px-3 py-2 text-sm text-white hover:bg-white/15"
-            title="Favorite"
-          >
-            {fav ? "💚" : "🤍"}
-          </button>
-
-          <div className="text-xs text-white/40">#{idx + 1}</div>
+          <button style={{ ...S.btnSecondary, marginTop: 10 }} onClick={boot}>Обновить статус</button>
         </div>
       </div>
     );
   }
 
-  function Catalog() {
+  function PageBillingReturn() {
     return (
-      <div className="space-y-3">
-        <div className="rounded-2xl bg-white/5 p-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Поиск: название или артист"
-              className="w-full flex-1 rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-white/40 outline-none focus:border-white/20 md:w-auto"
-            />
-            <button
-              onClick={doSearch}
-              className="rounded-xl bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-white/90"
-            >
-              Поиск
-            </button>
-            <button
-              onClick={async () => {
-                setQ("");
-                const t = await api.tracks("");
-                setTracks(t.tracks || []);
-                setQueue(t.tracks || []);
-                setQueueIndex(-1);
-              }}
-              className="rounded-xl bg-white/10 px-3 py-2 text-sm text-white hover:bg-white/15"
-            >
-              Сброс
-            </button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
-          {tracks.map((t, idx) => (
-            <TrackCard
-              key={t.id}
-              t={t}
-              idx={idx}
-              list={tracks}
-              onPlay={play}
-              onToggleFav={toggleFav}
-              fav={isFav.has(t.id)}
-            />
-          ))}
+      <div style={S.page}>
+        <div style={S.card}>
+          <div style={S.cardTitle}>✅ Оплата завершена</div>
+          <div style={S.cardSub}>Нажми кнопку ниже чтобы проверить и активировать доступ.</div>
+          <button style={{ ...S.btnPrimary, marginTop: 12 }} onClick={boot}>Проверить доступ</button>
         </div>
       </div>
     );
   }
 
-  function Favorites() {
-    return (
-      <div className="space-y-3">
-        {favorites.length === 0 ? (
-          <div className="rounded-2xl bg-white/5 p-4 text-sm text-white/70">
-            Пока пусто
-          </div>
-        ) : null}
-
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
-          {favorites.map((t, idx) => (
-            <TrackCard
-              key={t.id}
-              t={t}
-              idx={idx}
-              list={favorites}
-              onPlay={play}
-              onToggleFav={toggleFav}
-              fav={isFav.has(t.id)}
-            />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  function Profile() {
-    return (
-      <div className="space-y-3">
-        <div className="rounded-2xl bg-white/5 p-4 text-white">
-          <div className="text-sm font-semibold">Профиль</div>
-          <div className="mt-2 text-xs text-white/60">
-            Тут легко расширить: история платежей, настройки, тарифы, промокоды.
-          </div>
-        </div>
-
-        <div className="rounded-2xl bg-white/5 p-4 text-white">
-          <div className="text-sm font-semibold">Оплата</div>
-          <div className="mt-2 text-xs text-white/60">
-            ЮKassa возвращает на{" "}
-            <code className="rounded bg-black/40 px-1 py-0.5">
-              #/billing/return
-            </code>
-            . Доступ активируется после webhook. Затем нажми «Обновить».
-          </div>
-          <div className="mt-3">
-            <a
-              className="text-sm text-emerald-300 hover:underline"
-              href="#/billing/return"
-            >
-              Перейти на return
-            </a>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  function BillingReturn() {
-    return (
-      <div className="rounded-2xl bg-white/5 p-4 text-white">
-        <div className="text-sm font-semibold">Возврат после оплаты</div>
-        <div className="mt-2 text-xs text-white/60">
-          Нажми кнопку ниже, чтобы обновить статус доступа.
-        </div>
-        <div className="mt-3">
-          <button
-            onClick={boot}
-            className="rounded-xl bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-white/90"
-          >
-            Проверить доступ
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  function Admin() {
+  function PageAdmin() {
     const [adminTracks, setAdminTracks] = useState([]);
     const [title, setTitle] = useState("");
     const [artist, setArtist] = useState("");
     const [fileById, setFileById] = useState({});
     const [busy, setBusy] = useState(false);
+    const [adminError, setAdminError] = useState("");
 
     async function load() {
-      const r = await api.adminTracks();
-      setAdminTracks(r.tracks || []);
+      try {
+        const r = await api.adminTracks();
+        setAdminTracks(r.tracks || []);
+      } catch (e) { setAdminError(String(e.message || e)); }
     }
-    useEffect(() => {
-      load();
-    }, []);
+    useEffect(() => { load(); }, []);
 
     async function createTrack() {
       setBusy(true);
       try {
         await api.adminCreateTrack(title, artist);
-        setTitle("");
-        setArtist("");
+        setTitle(""); setArtist("");
         await load();
-      } finally {
-        setBusy(false);
-      }
+      } catch (e) { setAdminError(String(e.message || e)); }
+      finally { setBusy(false); }
     }
 
     async function upload(trackId) {
       const f = fileById[trackId];
       if (!f) return;
       setBusy(true);
-      try {
-        await api.adminUpload(trackId, f);
-        await load();
-      } finally {
-        setBusy(false);
-      }
+      try { await api.adminUpload(trackId, f); await load(); }
+      catch (e) { setAdminError(String(e.message || e)); }
+      finally { setBusy(false); }
     }
 
     async function publish(trackId) {
       setBusy(true);
-      try {
-        await api.adminPublish(trackId);
-        await load();
-      } finally {
-        setBusy(false);
-      }
+      try { await api.adminPublish(trackId); await load(); }
+      catch (e) { setAdminError(String(e.message || e)); }
+      finally { setBusy(false); }
     }
 
+    if (!isAdmin) return (
+      <div style={S.page}>
+        <div style={S.empty}>Только для администратора</div>
+      </div>
+    );
+
     return (
-      <div className="space-y-3">
-        <div className="rounded-2xl bg-white/5 p-4 text-white">
-          <div className="text-sm font-semibold">
-            Admin — управление треками
-          </div>
-          <div className="mt-3 grid gap-2">
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Название"
-              className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-white/40 outline-none focus:border-white/20"
-            />
-            <input
-              value={artist}
-              onChange={(e) => setArtist(e.target.value)}
-              placeholder="Артист"
-              className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-white/40 outline-none focus:border-white/20"
-            />
-            <button
-              disabled={busy || !title}
-              onClick={createTrack}
-              className="rounded-xl bg-emerald-500/90 px-3 py-2 text-sm font-semibold text-black hover:bg-emerald-400 disabled:opacity-50"
-            >
-              ➕ Создать трек
-            </button>
-          </div>
+      <div style={S.page}>
+        <div style={S.sectionTitle}>Управление треками</div>
+
+        {adminError && <div style={S.errorBox}>{adminError}</div>}
+
+        <div style={S.card}>
+          <div style={S.cardTitle}>Добавить трек</div>
+          <input value={title} onChange={(e) => setTitle(e.target.value)}
+            placeholder="Название" style={S.adminInput} />
+          <input value={artist} onChange={(e) => setArtist(e.target.value)}
+            placeholder="Артист" style={S.adminInput} />
+          <button disabled={busy || !title} style={S.btnPrimary} onClick={createTrack}>
+            ➕ Создать
+          </button>
         </div>
 
         {adminTracks.map((t) => (
-          <div key={t.id} className="rounded-2xl bg-white/5 p-4 text-white">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="truncate text-sm font-semibold">
-                  {t.title}{" "}
-                  <span className="text-white/60">
-                    {t.isPublished ? "✅" : "⏳"}
-                  </span>
+          <div key={t.id} style={S.card}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ ...S.cardTitle, display: "flex", alignItems: "center", gap: 6 }}>
+                  {t.title} {t.isPublished ? "✅" : "⏳"}
                 </div>
-                <div className="truncate text-xs text-white/60">
-                  {t.artist || "—"}
-                </div>
-                <div className="mt-1 break-all text-[11px] text-white/50">
-                  file: {t.filePath || "—"}
-                </div>
+                <div style={S.cardSub}>{t.artist || "—"}</div>
+                {t.filePath && <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 4, wordBreak: "break-all" }}>{t.filePath}</div>}
               </div>
-
-              <div className="grid gap-2">
-                <input
-                  type="file"
-                  accept="audio/*"
-                  onChange={(e) =>
-                    setFileById((s) => ({ ...s, [t.id]: e.target.files?.[0] }))
-                  }
-                  className="text-xs text-white/70"
-                />
-                <button
-                  disabled={busy || !fileById[t.id]}
-                  onClick={() => upload(t.id)}
-                  className="rounded-xl bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-white/90 disabled:opacity-50"
-                >
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
+                <input type="file" accept="audio/*"
+                  onChange={(e) => setFileById((s) => ({ ...s, [t.id]: e.target.files?.[0] }))}
+                  style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }} />
+                <button disabled={busy || !fileById[t.id]} style={S.btnSecondary} onClick={() => upload(t.id)}>
                   ⬆ Upload
                 </button>
-                <button
-                  disabled={busy || !t.filePath || t.isPublished}
-                  onClick={() => publish(t.id)}
-                  className="rounded-xl bg-white/10 px-3 py-2 text-sm text-white hover:bg-white/15 disabled:opacity-50"
-                >
+                <button disabled={busy || !t.filePath || t.isPublished} style={S.btnPrimary} onClick={() => publish(t.id)}>
                   🚀 Publish
                 </button>
               </div>
@@ -536,92 +648,63 @@ export default function App() {
     );
   }
 
-  let content = null;
-  if (route.startsWith("#/favorites")) content = <Favorites />;
-  else if (route.startsWith("#/profile")) content = <Profile />;
-  else if (route.startsWith("#/billing/return")) content = <BillingReturn />;
-  else if (route.startsWith("#/admin"))
-    content = isAdmin ? (
-      <Admin />
-    ) : (
-      <div className="rounded-2xl bg-white/5 p-4 text-white/70">
-        Только для админа
-      </div>
-    );
-  else content = <Catalog />;
+  // ── routing ───────────────────────────────────────────────────────────────
+
+  let page;
+  if (route.startsWith("#/favorites")) page = <PageFavorites />;
+  else if (route.startsWith("#/profile")) page = <PageProfile />;
+  else if (route.startsWith("#/billing/return")) page = <PageBillingReturn />;
+  else if (route.startsWith("#/admin")) page = <PageAdmin />;
+  else page = <PageCatalog />;
+
+  const tabs = [
+    { href: "#/", icon: "🏠", label: "Каталог", match: (r) => r === "#/" || r === "" },
+    { href: "#/favorites", icon: "♥", label: "Избранное", match: (r) => r.startsWith("#/favorites") },
+    { href: "#/profile", icon: "👤", label: "Профиль", match: (r) => r.startsWith("#/profile") },
+    ...(isAdmin ? [{ href: "#/admin", icon: "🛠", label: "Admin", match: (r) => r.startsWith("#/admin") }] : []),
+  ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-zinc-950 to-black">
-      <div className="mx-auto grid max-w-6xl grid-cols-1 gap-4 px-4 pb-28 pt-4 md:grid-cols-[240px_1fr]">
-        {/* Sidebar */}
-        <aside className="rounded-3xl bg-white/5 p-3 md:sticky md:top-4 md:h-[calc(100vh-2rem)]">
-          <div className="mb-3 rounded-2xl bg-white/5 px-3 py-3">
-            <div className="text-sm font-semibold text-white">Навигация</div>
-            <div className="mt-1 text-xs text-white/60">
-              Как Spotify, только в Telegram
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <SidebarLink href="#/" active={route === "#/" || route === ""}>
-              <Icon>🏠</Icon> Каталог
-            </SidebarLink>
-            <SidebarLink
-              href="#/favorites"
-              active={route.startsWith("#/favorites")}
-            >
-              <Icon>💚</Icon> Избранное
-            </SidebarLink>
-            <SidebarLink
-              href="#/profile"
-              active={route.startsWith("#/profile")}
-            >
-              <Icon>👤</Icon> Профиль
-            </SidebarLink>
-            {isAdmin && (
-              <SidebarLink href="#/admin" active={route.startsWith("#/admin")}>
-                <Icon>🛠</Icon> Admin
-              </SidebarLink>
-            )}
-          </div>
-
-          {error ? (
-            <div className="mt-3 rounded-2xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
-              {error}
-            </div>
-          ) : null}
-
-          {!ready ? (
-            <div className="mt-3 rounded-2xl bg-white/5 p-3 text-xs text-white/70">
-              Открой Mini App внутри Telegram (нужен initData). Если в браузере
-              — будет ошибка.
-              <div className="mt-2">
-                <button
-                  onClick={boot}
-                  className="rounded-xl bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-white/90"
-                >
-                  Попробовать снова
-                </button>
-              </div>
-            </div>
-          ) : null}
-        </aside>
-
-        {/* Main */}
-        <main className="space-y-4 rounded-3xl bg-white/5 p-4">
-          <TopBar />
-          {ready ? <HeaderCards /> : null}
-          <div className="h-px bg-white/10" />
-          {ready ? content : null}
-        </main>
+    <div style={S.app}>
+      {/* Header */}
+      <div style={S.header}>
+        <div>
+          <div style={S.logo}>🎧 Music</div>
+          <div style={S.logoSub}>Telegram Mini App</div>
+        </div>
+        <div style={S.headerBtns}>
+          <button style={S.btnSecondary} onClick={boot}>↺</button>
+        </div>
       </div>
 
-      <SpotifyPlayer
-        track={current}
-        audioUrl={audioUrl}
-        onPrev={playPrev}
-        onNext={playNext}
-      />
+      {/* Page */}
+      {page}
+
+      {/* Player (sits above tab bar) */}
+      <div style={{ paddingBottom: current ? 60 : 0 }}>
+        <SpotifyPlayer
+          ref={playerRef}
+          track={current}
+          audioUrl={audioUrl}
+          onPrev={playPrev}
+          onNext={playNext}
+        />
+      </div>
+
+      {/* Tab Bar */}
+      <div style={{
+        ...S.tabBar,
+        bottom: current ? 84 : 0,
+      }}>
+        {tabs.map((tab) => (
+          <a key={tab.href} href={tab.href} style={{ textDecoration: "none", flex: 1 }}>
+            <div style={S.tabItem(tab.match(route))}>
+              <span style={S.tabIcon}>{tab.icon}</span>
+              <span>{tab.label}</span>
+            </div>
+          </a>
+        ))}
+      </div>
     </div>
   );
 }
