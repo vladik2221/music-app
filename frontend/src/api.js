@@ -43,7 +43,7 @@ export async function login() {
 export const api = {
   me: () => raw('/me'),
   trialStart: () => raw('/me/trial/start', { method: 'POST' }),
-  tracks: (search='') => raw(`/tracks?search=${encodeURIComponent(search)}`),
+  tracks: (search = '') => raw(`/tracks?search=${encodeURIComponent(search)}`),
   favorites: () => raw('/me/favorites'),
   favAdd: (id) => raw(`/me/favorites/${id}`, { method: 'POST' }),
   favDel: (id) => raw(`/me/favorites/${id}`, { method: 'DELETE' }),
@@ -67,19 +67,17 @@ export const api = {
     if (!r.ok || j.ok === false) throw new Error(j.error || `HTTP ${r.status}`);
     return j;
   },
-  adminPublish: (trackId) => raw(`/admin/tracks/${trackId}/publish`, { method: 'POST' })
+  adminPublish: (trackId) => raw(`/admin/tracks/${trackId}/publish`, { method: 'POST' }),
 };
 
+// Stream: backend redirects to signed S3 URL, we just build the src URL directly
+export function getStreamUrl(trackId) {
+  return `${API}/tracks/${trackId}/stream?token=${encodeURIComponent(getToken())}`;
+}
+
+// Returns stream URL with token in query param so <audio> can follow the S3 redirect
 export async function fetchStreamBlobUrl(trackId) {
-  const r = await fetch(`${API}/tracks/${trackId}/stream`, {
-    headers: { Authorization: `Bearer ${getToken()}` }
-  });
-  if (!r.ok) {
-    const j = await r.json().catch(() => ({}));
-    throw new Error(j.error || `HTTP ${r.status}`);
-  }
-  const blob = await r.blob();
-  return URL.createObjectURL(blob);
+  return `${API}/tracks/${trackId}/stream?token=${encodeURIComponent(getToken())}`;
 }
 
 export async function adminCoverUpload(trackId, file) {

@@ -45,11 +45,13 @@ export async function authTelegram(req, res) {
 }
 
 export function requireAuth(req, res, next) {
+  // Support both Authorization header and ?token= query param (needed for audio src)
   const header = req.headers.authorization || '';
   const m = header.match(/^Bearer (.+)$/);
-  if (!m) return res.status(401).json({ ok: false, error: 'Missing Bearer token' });
+  const raw = m ? m[1] : (req.query.token || '');
+  if (!raw) return res.status(401).json({ ok: false, error: 'Missing Bearer token' });
   try {
-    req.auth = jwt.verify(m[1], JWT_SECRET);
+    req.auth = jwt.verify(raw, JWT_SECRET);
     return next();
   } catch {
     return res.status(401).json({ ok: false, error: 'Invalid token' });
