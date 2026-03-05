@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch src/index.js",
-    "start": "node_modules/.bin/prisma migrate deploy && node src/index.js",
+    "start": "node node_modules/prisma/build/index.js migrate deploy && node src/index.js",
     "seed": "node prisma/seed.js",
     "studio": "npx prisma studio"
   },
