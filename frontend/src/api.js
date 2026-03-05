@@ -81,3 +81,16 @@ export async function fetchStreamBlobUrl(trackId) {
   const blob = await r.blob();
   return URL.createObjectURL(blob);
 }
+
+export async function adminCoverUpload(trackId, file) {
+  const fd = new FormData();
+  fd.append('cover', file);
+  const r = await fetch(`${API}/admin/tracks/${trackId}/cover`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${getToken()}` },
+    body: fd
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.ok === false) throw new Error(j.error || `HTTP ${r.status}`);
+  return j;
+}

@@ -243,4 +243,44 @@ router.post('/admin/tracks/:id/publish', requireAuth, requireAdmin, async (req, 
   res.json({ ok: true, track: updated });
 });
 
+const coverUploadDir = process.env.COVER_DIR || './uploads/covers';
+fs.mkdirSync(coverUploadDir, { recursive: true });
+
+const coverUpload = multer({
+  dest: coverUploadDir,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('Only image files allowed'));
+  }
+});
+
+router.post('/admin/tracks/:id/cover', requireAuth, requireAdmin, coverUpload.single('cover'), async (req, res) => {
+  const trackId = req.params.id;
+  const track = await prisma.track.findUnique({ where: { id: trackId } });
+  if (!track) return res.status(404).json({ ok: false, error: 'Track not found' });
+  if (!req.file) return res.status(400).json({ ok: false, error: 'cover image required' });
+
+  // Delete old cover file if exists and is local
+  if (track.coverUrl && !track.coverUrl.startsWith('http')) {
+    const oldPath = path.resolve('.' + track.coverUrl.replace(/^\/covers\//, '/uploads/covers/'));
+    if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+  }
+
+  const ext = path.extname(req.file.originalname || '') || '.jpg';
+  const filename = `${trackId}_cover${ext}`;
+  const newPath = path.join(coverUploadDir, filename);
+  fs.renameSync(req.file.path, newPath);
+
+  // Store as URL path served statically
+  const coverUrl = `/covers/${filename}`;
+
+  const updated = await prisma.track.update({
+    where: { id: trackId },
+    data: { coverUrl }
+  });
+
+  res.json({ ok: true, track: updated });
+});
+
 export default router;

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { api, fetchStreamBlobUrl, login, tg, getToken } from "./api.js";
+import { api, fetchStreamBlobUrl, login, tg, getToken, adminCoverUpload } from "./api.js";
 import SpotifyPlayer from "./components/SpotifyPlayer";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -560,6 +560,7 @@ export default function App() {
     const [title, setTitle] = useState("");
     const [artist, setArtist] = useState("");
     const [fileById, setFileById] = useState({});
+    const [coverById, setCoverById] = useState({});
     const [busy, setBusy] = useState(false);
     const [adminError, setAdminError] = useState("");
 
@@ -576,6 +577,18 @@ export default function App() {
       try {
         await api.adminCreateTrack(title, artist);
         setTitle(""); setArtist("");
+        await load();
+      } catch (e) { setAdminError(String(e.message || e)); }
+      finally { setBusy(false); }
+    }
+
+    async function uploadCover(trackId) {
+      const f = coverById[trackId];
+      if (!f) return;
+      setBusy(true);
+      try {
+        await adminCoverUpload(trackId, f);
+        setCoverById((s) => { const n = {...s}; delete n[trackId]; return n; });
         await load();
       } catch (e) { setAdminError(String(e.message || e)); }
       finally { setBusy(false); }
@@ -631,12 +644,22 @@ export default function App() {
                 {t.filePath && <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 4, wordBreak: "break-all" }}>{t.filePath}</div>}
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginBottom: 2 }}>🎵 Аудио</div>
                 <input type="file" accept="audio/*"
                   onChange={(e) => setFileById((s) => ({ ...s, [t.id]: e.target.files?.[0] }))}
                   style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }} />
                 <button disabled={busy || !fileById[t.id]} style={S.btnSecondary} onClick={() => upload(t.id)}>
-                  ⬆ Upload
+                  ⬆ Upload аудио
                 </button>
+
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 4, marginBottom: 2 }}>🖼 Обложка</div>
+                <input type="file" accept="image/*"
+                  onChange={(e) => setCoverById((s) => ({ ...s, [t.id]: e.target.files?.[0] }))}
+                  style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }} />
+                <button disabled={busy || !coverById[t.id]} style={S.btnSecondary} onClick={() => uploadCover(t.id)}>
+                  🖼 Upload обложку
+                </button>
+
                 <button disabled={busy || !t.filePath || t.isPublished} style={S.btnPrimary} onClick={() => publish(t.id)}>
                   🚀 Publish
                 </button>
