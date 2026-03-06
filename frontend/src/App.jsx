@@ -105,8 +105,8 @@ export default function App() {
         const m = await api.me();
         setMe(m);
       } catch (e) {
-        // Токен невалиден — логинимся заново
-        if (String(e.message).includes('Invalid token') || String(e.message).includes('401')) {
+        // Перелогиниваемся при любой ошибке авторизации
+        if (String(e.message).includes('Invalid token') || String(e.message).includes('401') || String(e.message).includes('User not found')) {
           await login();
           const m = await api.me();
           setMe(m);
@@ -1106,8 +1106,8 @@ export default function App() {
     <div style={S.app}>
       <div style={S.header}>
         <div>
-          <div style={S.logo}>🎧 MusicCloud</div>
-          <div style={S.logoSub}>Слушай без блюра</div>
+          <div style={S.logo}>🎧 Music</div>
+          <div style={S.logoSub}>Telegram Mini App</div>
         </div>
         <div style={S.headerBtns}>
           <button style={S.btnSecondary} onClick={boot}>↺</button>
