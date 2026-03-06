@@ -496,6 +496,15 @@ router.post('/admin/artists/:id/photo', requireAuth, requireAdmin, artistPhotoUp
   res.json({ ok: true, artist: updated });
 });
 
+router.delete('/admin/artists/:id', requireAuth, requireAdmin, async (req, res) => {
+  const artist = await prisma.artist.findUnique({ where: { id: req.params.id } });
+  if (!artist) return res.status(404).json({ ok: false, error: 'Artist not found' });
+  if (artist.photoUrl && artist.photoUrl.startsWith('artists/')) await deleteFromS3(artist.photoUrl);
+  await prisma.track.updateMany({ where: { artistId: req.params.id }, data: { artistId: null } });
+  await prisma.artist.delete({ where: { id: req.params.id } });
+  res.json({ ok: true });
+});
+
 router.post('/admin/tracks/:id/artist', requireAuth, requireAdmin, async (req, res) => {
   const { artistId } = req.body || {};
   const track = await prisma.track.findUnique({ where: { id: req.params.id } });

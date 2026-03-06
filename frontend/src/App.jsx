@@ -762,6 +762,16 @@ export default function App() {
       try { await api.adminUpdateArtist(id, e.name, e.bio); setEditArtistById(s => { const n = {...s}; delete n[id]; return n; }); await loadAdminArtists(); }
       catch (e) { setAdminError(String(e.message || e)); } finally { setBusy(false); }
     }
+    async function deleteArtist(id) {
+      setBusy(true);
+      try {
+        await fetch(`${import.meta.env.VITE_API_BASE_URL || ""}/admin/artists/${id}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${getToken()}` }
+        });
+        await loadAdminArtists();
+      } catch (e) { setAdminError(String(e.message || e)); } finally { setBusy(false); }
+    }
     async function uploadArtistPhoto(id) {
       const f = artistPhotoById[id]; if (!f) return; setBusy(true);
       try { await api.adminArtistPhoto(id, f); setArtistPhotoById(s => { const n = {...s}; delete n[id]; return n; }); await loadAdminArtists(); }
@@ -899,7 +909,10 @@ export default function App() {
                       <div style={{ fontSize: 14, fontWeight: 600, color: "#fff" }}>{a.name}</div>
                       {a.bio && <div style={S.cardSub}>{a.bio}</div>}
                     </div>
-                    <button onClick={() => setEditArtistById(s => ({ ...s, [a.id]: { name: a.name, bio: a.bio || "" } }))} style={{ ...S.btnSecondary, padding: "5px 10px", fontSize: 12 }}>✏️</button>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={() => setEditArtistById(s => ({ ...s, [a.id]: { name: a.name, bio: a.bio || "" } }))} style={{ ...S.btnSecondary, padding: "5px 10px", fontSize: 12 }}>✏️</button>
+                      <button disabled={busy} onClick={() => deleteArtist(a.id)} style={S.btnDanger}>🗑</button>
+                    </div>
                   </div>
                 )}
                 <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginBottom: 4 }}>📷 Фото</div>
