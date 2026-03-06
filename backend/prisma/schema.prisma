@@ -34,8 +34,26 @@ model Artist {
   photoUrl String?
 
   tracks    Track[]
+  albums    Album[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Album {
+  id       String  @id @default(cuid())
+  title    String
+  artistId String
+  coverUrl String?
+  year     Int?
+
+  artist    Artist   @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  tracks    Track[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([title, artistId])
 }
 
 model Track {
@@ -43,6 +61,7 @@ model Track {
   title       String
   artist      String?
   artistId    String?
+  albumId     String?
   coverUrl    String?
   durationSec Int?
   filePath    String?
@@ -50,6 +69,7 @@ model Track {
   playCount   Int     @default(0)
 
   artistRel      Artist?         @relation(fields: [artistId], references: [id], onDelete: SetNull)
+  albumRel       Album?          @relation(fields: [albumId], references: [id], onDelete: SetNull)
   favorites      Favorite[]
   playlistTracks PlaylistTrack[]
   listenHistory  ListenHistory[]

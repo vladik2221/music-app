@@ -416,26 +416,99 @@ export default function App() {
     );
   }
 
+  // ── Artist Detail (с альбомами) ──────────────────────────────────────────
   function PageArtistDetail({ artistId, onBack }) {
     const [artist, setArtist] = useState(null);
     const [artTracks, setArtTracks] = useState([]);
+    const [albums, setAlbums] = useState([]);
+    const [openAlbum, setOpenAlbum] = useState(null);
+    const [albumTracks, setAlbumTracks] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-      api.artist(artistId)
-        .then(r => { setArtist(r.artist); setArtTracks(r.tracks || []); })
+      Promise.all([
+        api.artist(artistId),
+        fetch(`${import.meta.env.VITE_API_URL || ""}/artists/${artistId}/albums`, {
+          headers: { Authorization: `Bearer ${getToken()}` }
+        }).then(r => r.json())
+      ])
+        .then(([artistRes, albumsRes]) => {
+          setArtist(artistRes.artist);
+          setArtTracks(artistRes.tracks || []);
+          setAlbums(albumsRes.albums || []);
+        })
         .catch(() => {})
         .finally(() => setLoading(false));
     }, [artistId]);
 
+    async function handleOpenAlbum(album) {
+      setOpenAlbum(album);
+      try {
+        const res = await fetch(`${import.meta.env.VITE_API_URL || ""}/albums/${album.id}`, {
+          headers: { Authorization: `Bearer ${getToken()}` }
+        }).then(r => r.json());
+        setAlbumTracks(res.album?.tracks || []);
+      } catch {}
+    }
+
     if (loading) return <div style={S.page}><div style={S.empty}>Загрузка...</div></div>;
     if (!artist) return <div style={S.page}><div style={S.empty}>Артист не найден</div></div>;
 
+    // Страница альбома
+    if (openAlbum) {
+      return (
+        <div>
+          <div style={{ ...S.page, paddingBottom: 0 }}>
+            <button onClick={() => setOpenAlbum(null)} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.6)", fontSize: 22, cursor: "pointer", padding: "0 0 8px 0" }}>‹ Назад</button>
+          </div>
+          {/* Шапка альбома */}
+          <div style={{ padding: "0 16px 20px", display: "flex", gap: 16, alignItems: "flex-end" }}>
+            <div style={{ width: 110, height: 110, borderRadius: 12, overflow: "hidden", background: "rgba(255,255,255,0.07)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 40 }}>
+              {openAlbum.coverUrl
+                ? <img src={openAlbum.coverUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" />
+                : "💿"}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginBottom: 4, textTransform: "uppercase", letterSpacing: 1 }}>Альбом</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "#fff", marginBottom: 4 }}>{openAlbum.title}</div>
+              <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>
+                {artist.name}{openAlbum.year ? ` · ${openAlbum.year}` : ""}
+              </div>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>
+                {albumTracks.length} {albumTracks.length === 1 ? "трек" : albumTracks.length < 5 ? "трека" : "треков"}
+              </div>
+            </div>
+          </div>
+          {/* Треки альбома */}
+          <div style={{ padding: "0 16px" }}>
+            {albumTracks.length === 0
+              ? <div style={S.empty}>Треков в альбоме нет</div>
+              : albumTracks.map((t, idx) => (
+                <div key={t.id} style={{ ...S.card, display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", cursor: "pointer", border: current?.id === t.id ? "1px solid rgba(29,185,84,0.4)" : "1px solid transparent" }} onClick={() => play(t, albumTracks, idx)}>
+                  <div style={{ width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    {current?.id === t.id
+                      ? <span style={{ color: "#1db954", fontSize: 16 }}>▶</span>
+                      : <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 13 }}>{idx + 1}</span>}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: current?.id === t.id ? "#1db954" : "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</div>
+                    {t.playCount > 0 && <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 2 }}>▶ {t.playCount.toLocaleString()}</div>}
+                  </div>
+                </div>
+              ))
+            }
+          </div>
+        </div>
+      );
+    }
+
+    // Страница артиста
     return (
       <div>
         <div style={{ ...S.page, paddingBottom: 0 }}>
           <button onClick={onBack} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.6)", fontSize: 22, cursor: "pointer", padding: "0 0 8px 0" }}>‹ Назад</button>
         </div>
+        {/* Шапка */}
         <div style={{ position: "relative", marginBottom: 20, minHeight: 180 }}>
           {artist.photoUrl ? (
             <img src={artist.photoUrl} alt={artist.name} style={{ width: "100%", height: 220, objectFit: "cover", display: "block" }} />
@@ -445,15 +518,45 @@ export default function App() {
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(0deg, rgba(0,0,0,0.85) 0%, transparent 60%)" }} />
           <div style={{ position: "absolute", bottom: 16, left: 16 }}>
             <div style={{ fontSize: 26, fontWeight: 800, color: "#fff", letterSpacing: -0.5 }}>{artist.name}</div>
-            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginTop: 2 }}>{artTracks.length} {artTracks.length === 1 ? "трек" : artTracks.length < 5 ? "трека" : "треков"}</div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginTop: 2 }}>
+              {artTracks.length} {artTracks.length === 1 ? "трек" : artTracks.length < 5 ? "трека" : "треков"}
+              {albums.length > 0 && ` · ${albums.length} ${albums.length === 1 ? "альбом" : albums.length < 5 ? "альбома" : "альбомов"}`}
+            </div>
           </div>
         </div>
+
         <div style={S.page}>
           {artist.bio && (
             <div style={{ ...S.card, marginBottom: 20 }}>
               <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", lineHeight: 1.6 }}>{artist.bio}</div>
             </div>
           )}
+
+          {/* Альбомы — горизонтальный скролл */}
+          {albums.length > 0 && (
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ ...S.sectionTitle, marginBottom: 12 }}>Альбомы</div>
+              <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8, marginLeft: -16, paddingLeft: 16, marginRight: -16, paddingRight: 16 }}>
+                {albums.map(album => (
+                  <div key={album.id} onClick={() => handleOpenAlbum(album)} style={{ flexShrink: 0, width: 130, cursor: "pointer" }}>
+                    <div style={{ width: 130, height: 130, borderRadius: 12, overflow: "hidden", background: "rgba(255,255,255,0.07)", marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 40 }}>
+                      {album.coverUrl
+                        ? <img src={album.coverUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" />
+                        : "💿"}
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{album.title}</div>
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>
+                      {album.year || ""}
+                      {album.year && album._count?.tracks ? " · " : ""}
+                      {album._count?.tracks ? `${album._count.tracks} тр.` : ""}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Популярные треки */}
           <div style={{ ...S.sectionTitle, marginBottom: 12 }}>Треки</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {artTracks.map((t, idx) => (
@@ -567,11 +670,24 @@ export default function App() {
     const [adminError, setAdminError] = useState("");
     const [confirmDelete, setConfirmDelete] = useState(null);
     const [adminTab, setAdminTab] = useState("tracks");
+
+    // Artists state
     const [adminArtists, setAdminArtists] = useState([]);
     const [artistName, setArtistName] = useState("");
     const [artistBio, setArtistBio] = useState("");
     const [artistPhotoById, setArtistPhotoById] = useState({});
     const [editArtistById, setEditArtistById] = useState({});
+
+    // Albums state
+    const [adminAlbums, setAdminAlbums] = useState([]);
+    const [newAlbumTitle, setNewAlbumTitle] = useState("");
+    const [newAlbumArtistId, setNewAlbumArtistId] = useState("");
+    const [newAlbumYear, setNewAlbumYear] = useState("");
+    const [albumCoverById, setAlbumCoverById] = useState({});
+    const [editAlbumById, setEditAlbumById] = useState({});
+    const [openAlbumId, setOpenAlbumId] = useState(null);
+    const [albumDetail, setAlbumDetail] = useState(null);
+    const [addTrackToAlbumId, setAddTrackToAlbumId] = useState("");
 
     async function loadTracks() {
       try { const r = await api.adminTracks(); setAdminTracks(r.tracks || []); }
@@ -581,8 +697,18 @@ export default function App() {
       try { const r = await api.adminArtists(); setAdminArtists(r.artists || []); }
       catch (e) { setAdminError(String(e.message || e)); }
     }
-    useEffect(() => { loadTracks(); loadAdminArtists(); }, []);
+    async function loadAdminAlbums() {
+      try {
+        const r = await fetch(`${import.meta.env.VITE_API_URL || ""}/admin/albums`, {
+          headers: { Authorization: `Bearer ${getToken()}` }
+        }).then(res => res.json());
+        setAdminAlbums(r.albums || []);
+      } catch (e) { setAdminError(String(e.message || e)); }
+    }
 
+    useEffect(() => { loadTracks(); loadAdminArtists(); loadAdminAlbums(); }, []);
+
+    // Track actions
     async function createTrack() {
       setBusy(true);
       try { await api.adminCreateTrack(newTitle, newArtist); setNewTitle(""); setNewArtist(""); await loadTracks(); }
@@ -615,6 +741,8 @@ export default function App() {
       try { await api.adminDeleteTrack(id); setConfirmDelete(null); await loadTracks(); }
       catch (e) { setAdminError(String(e.message || e)); } finally { setBusy(false); }
     }
+
+    // Artist actions
     async function createArtist() {
       if (!artistName.trim()) return; setBusy(true);
       try { await api.adminCreateArtist(artistName.trim(), artistBio.trim()); setArtistName(""); setArtistBio(""); await loadAdminArtists(); }
@@ -631,63 +759,149 @@ export default function App() {
       catch (e) { setAdminError(String(e.message || e)); } finally { setBusy(false); }
     }
 
+    // Album actions
+    async function createAlbum() {
+      if (!newAlbumTitle.trim() || !newAlbumArtistId) return; setBusy(true);
+      try {
+        await fetch(`${import.meta.env.VITE_API_URL || ""}/admin/albums`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+          body: JSON.stringify({ title: newAlbumTitle.trim(), artistId: newAlbumArtistId, year: newAlbumYear || null })
+        });
+        setNewAlbumTitle(""); setNewAlbumArtistId(""); setNewAlbumYear("");
+        await loadAdminAlbums();
+      } catch (e) { setAdminError(String(e.message || e)); } finally { setBusy(false); }
+    }
+
+    async function uploadAlbumCover(id) {
+      const f = albumCoverById[id]; if (!f) return; setBusy(true);
+      try {
+        const fd = new FormData(); fd.append("cover", f);
+        await fetch(`${import.meta.env.VITE_API_URL || ""}/admin/albums/${id}/cover`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${getToken()}` },
+          body: fd
+        });
+        setAlbumCoverById(s => { const n = {...s}; delete n[id]; return n; });
+        await loadAdminAlbums();
+        if (openAlbumId === id) await openAlbumDetail(id);
+      } catch (e) { setAdminError(String(e.message || e)); } finally { setBusy(false); }
+    }
+
+    async function saveAlbumEdit(id) {
+      const e = editAlbumById[id]; if (!e) return; setBusy(true);
+      try {
+        await fetch(`${import.meta.env.VITE_API_URL || ""}/admin/albums/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+          body: JSON.stringify({ title: e.title, year: e.year || null })
+        });
+        setEditAlbumById(s => { const n = {...s}; delete n[id]; return n; });
+        await loadAdminAlbums();
+        if (openAlbumId === id) await openAlbumDetail(id);
+      } catch (e) { setAdminError(String(e.message || e)); } finally { setBusy(false); }
+    }
+
+    async function deleteAlbum(id) {
+      setBusy(true);
+      try {
+        await fetch(`${import.meta.env.VITE_API_URL || ""}/admin/albums/${id}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${getToken()}` }
+        });
+        if (openAlbumId === id) { setOpenAlbumId(null); setAlbumDetail(null); }
+        await loadAdminAlbums();
+      } catch (e) { setAdminError(String(e.message || e)); } finally { setBusy(false); }
+    }
+
+    async function openAlbumDetail(id) {
+      try {
+        const r = await fetch(`${import.meta.env.VITE_API_URL || ""}/albums/${id}`, {
+          headers: { Authorization: `Bearer ${getToken()}` }
+        }).then(res => res.json());
+        setAlbumDetail(r.album);
+        setOpenAlbumId(id);
+      } catch (e) { setAdminError(String(e.message || e)); }
+    }
+
+    async function addTrackToAlbum(albumId) {
+      if (!addTrackToAlbumId.trim()) return; setBusy(true);
+      try {
+        await fetch(`${import.meta.env.VITE_API_URL || ""}/admin/albums/${albumId}/tracks`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+          body: JSON.stringify({ trackId: addTrackToAlbumId.trim() })
+        });
+        setAddTrackToAlbumId("");
+        await openAlbumDetail(albumId);
+      } catch (e) { setAdminError(String(e.message || e)); } finally { setBusy(false); }
+    }
+
+    async function removeTrackFromAlbum(albumId, trackId) {
+      setBusy(true);
+      try {
+        await fetch(`${import.meta.env.VITE_API_URL || ""}/admin/albums/${albumId}/tracks/${trackId}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${getToken()}` }
+        });
+        await openAlbumDetail(albumId);
+      } catch (e) { setAdminError(String(e.message || e)); } finally { setBusy(false); }
+    }
+
     if (!isAdmin) {
       return <div style={S.page}><div style={S.empty}>Только для администратора</div></div>;
     }
 
     return (
       <div style={S.page}>
-        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-          {[["tracks", "Треки"], ["artists", "Артисты"]].map(([key, label]) => (
+        <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+          {[["tracks", "Треки"], ["artists", "Артисты"], ["albums", "Альбомы"]].map(([key, label]) => (
             <button key={key} onClick={() => setAdminTab(key)} style={{ ...(adminTab === key ? S.btnPrimary : S.btnSecondary), borderRadius: 20, padding: "7px 16px", fontSize: 13 }}>
               {label}
             </button>
           ))}
         </div>
+
         {adminError && <div style={S.errorBox}>{adminError}</div>}
 
+        {/* ── Вкладка Артисты ── */}
         {adminTab === "artists" && (
           <div>
             <div style={S.card}>
               <div style={S.cardTitle}>Добавить артиста</div>
-              <input value={artistName} onChange={e => setArtistName(e.target.value)} placeholder="Имя артиста" style={S.adminInput} />
-              <input value={artistBio} onChange={e => setArtistBio(e.target.value)} placeholder="Bio (опционально)" style={{ ...S.adminInput, marginBottom: 8 }} />
+              <input value={artistName} onChange={e => setArtistName(e.target.value)} placeholder="Имя" style={S.adminInput} />
+              <input value={artistBio} onChange={e => setArtistBio(e.target.value)} placeholder="Описание (необязательно)" style={S.adminInput} />
               <button disabled={busy || !artistName.trim()} style={S.btnPrimary} onClick={createArtist}>➕ Создать</button>
             </div>
-            {adminArtists.map(a => {
-              const editing = editArtistById[a.id];
-              return (
-                <div key={a.id} style={S.card}>
-                  {editing ? (
+            {adminArtists.map(a => (
+              <div key={a.id} style={S.card}>
+                {editArtistById[a.id] ? (
+                  <div style={{ marginBottom: 10 }}>
+                    <input value={editArtistById[a.id].name} onChange={e => setEditArtistById(s => ({ ...s, [a.id]: { ...s[a.id], name: e.target.value } }))} placeholder="Имя" style={{ ...S.adminInput, marginBottom: 6 }} />
+                    <input value={editArtistById[a.id].bio} onChange={e => setEditArtistById(s => ({ ...s, [a.id]: { ...s[a.id], bio: e.target.value } }))} placeholder="Описание" style={{ ...S.adminInput, marginBottom: 8 }} />
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button disabled={busy} style={S.btnPrimary} onClick={() => saveArtist(a.id)}>✓ Сохранить</button>
+                      <button style={S.btnSecondary} onClick={() => setEditArtistById(s => { const n = {...s}; delete n[a.id]; return n; })}>Отмена</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                     <div>
-                      <input value={editing.name} onChange={e => setEditArtistById(s => ({ ...s, [a.id]: { ...s[a.id], name: e.target.value } }))} placeholder="Имя" style={S.adminInput} />
-                      <input value={editing.bio} onChange={e => setEditArtistById(s => ({ ...s, [a.id]: { ...s[a.id], bio: e.target.value } }))} placeholder="Bio" style={{ ...S.adminInput, marginBottom: 8 }} />
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <button disabled={busy} style={S.btnPrimary} onClick={() => saveArtist(a.id)}>✓ Сохранить</button>
-                        <button style={S.btnSecondary} onClick={() => setEditArtistById(s => { const n = {...s}; delete n[a.id]; return n; })}>Отмена</button>
-                      </div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "#fff" }}>{a.name}</div>
+                      {a.bio && <div style={S.cardSub}>{a.bio}</div>}
                     </div>
-                  ) : (
-                    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
-                      <div style={{ width: 44, height: 44, borderRadius: "50%", overflow: "hidden", background: "rgba(255,255,255,0.08)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        {a.photoUrl ? <img src={a.photoUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" /> : "🎤"}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>{a.name}</div>
-                        {a.bio && <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.bio}</div>}
-                      </div>
-                      <button style={{ ...S.btnSecondary, padding: "5px 10px", fontSize: 12 }} onClick={() => setEditArtistById(s => ({ ...s, [a.id]: { name: a.name, bio: a.bio || "" } }))}>✏️</button>
-                    </div>
-                  )}
-                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginBottom: 4 }}>📷 Фото</div>
-                  <input type="file" accept="image/*" onChange={e => setArtistPhotoById(s => ({ ...s, [a.id]: e.target.files?.[0] }))} style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginBottom: 6 }} />
-                  <button disabled={busy || !artistPhotoById[a.id]} style={S.btnSecondary} onClick={() => uploadArtistPhoto(a.id)}>📷 Upload фото</button>
-                </div>
-              );
-            })}
+                    <button onClick={() => setEditArtistById(s => ({ ...s, [a.id]: { name: a.name, bio: a.bio || "" } }))} style={{ ...S.btnSecondary, padding: "5px 10px", fontSize: 12 }}>✏️</button>
+                  </div>
+                )}
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginBottom: 4 }}>📷 Фото</div>
+                <input type="file" accept="image/*" onChange={e => setArtistPhotoById(s => ({ ...s, [a.id]: e.target.files?.[0] }))} style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginBottom: 6 }} />
+                <button disabled={busy || !artistPhotoById[a.id]} style={S.btnSecondary} onClick={() => uploadArtistPhoto(a.id)}>📷 Upload фото</button>
+              </div>
+            ))}
           </div>
         )}
 
+        {/* ── Вкладка Треки ── */}
         {adminTab === "tracks" && (
           <div>
             <div style={S.card}>
@@ -718,6 +932,7 @@ export default function App() {
                           <span>{t.isPublished ? "✅" : "⏳"}</span>
                         </div>
                         <div style={S.cardSub}>{t.artist || "—"}</div>
+                        {t.albumId && <div style={{ fontSize: 11, color: "rgba(29,185,84,0.6)", marginTop: 2 }}>💿 В альбоме</div>}
                       </div>
                       <div style={{ display: "flex", gap: 6, flexShrink: 0, marginLeft: 8 }}>
                         <button onClick={() => startEdit(t)} style={{ ...S.btnSecondary, padding: "5px 10px", fontSize: 12 }}>✏️</button>
@@ -744,6 +959,99 @@ export default function App() {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* ── Вкладка Альбомы ── */}
+        {adminTab === "albums" && (
+          <div>
+            {/* Если открыт конкретный альбом */}
+            {openAlbumId && albumDetail ? (
+              <div>
+                <button onClick={() => { setOpenAlbumId(null); setAlbumDetail(null); }} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.6)", fontSize: 16, cursor: "pointer", marginBottom: 12, padding: 0 }}>‹ Все альбомы</button>
+                <div style={S.card}>
+                  <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 12 }}>
+                    <div style={{ width: 60, height: 60, borderRadius: 8, overflow: "hidden", background: "rgba(255,255,255,0.07)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>
+                      {albumDetail.coverUrl ? <img src={albumDetail.coverUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" /> : "💿"}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      {editAlbumById[openAlbumId] ? (
+                        <div>
+                          <input value={editAlbumById[openAlbumId].title} onChange={e => setEditAlbumById(s => ({ ...s, [openAlbumId]: { ...s[openAlbumId], title: e.target.value } }))} style={{ ...S.adminInput, marginBottom: 6 }} />
+                          <input value={editAlbumById[openAlbumId].year} onChange={e => setEditAlbumById(s => ({ ...s, [openAlbumId]: { ...s[openAlbumId], year: e.target.value } }))} placeholder="Год" style={{ ...S.adminInput, marginBottom: 8 }} />
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button disabled={busy} style={S.btnPrimary} onClick={() => saveAlbumEdit(openAlbumId)}>✓</button>
+                            <button style={S.btnSecondary} onClick={() => setEditAlbumById(s => { const n = {...s}; delete n[openAlbumId]; return n; })}>✕</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <div style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>{albumDetail.title}</div>
+                          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>{albumDetail.artist?.name}{albumDetail.year ? ` · ${albumDetail.year}` : ""}</div>
+                          <button onClick={() => setEditAlbumById(s => ({ ...s, [openAlbumId]: { title: albumDetail.title, year: albumDetail.year || "" } }))} style={{ ...S.btnSecondary, padding: "4px 10px", fontSize: 11, marginTop: 6 }}>✏️ Редактировать</button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {/* Обложка альбома */}
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginBottom: 4 }}>🖼 Обложка альбома</div>
+                  <input type="file" accept="image/*" onChange={e => setAlbumCoverById(s => ({ ...s, [openAlbumId]: e.target.files?.[0] }))} style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginBottom: 6 }} />
+                  <button disabled={busy || !albumCoverById[openAlbumId]} style={S.btnSecondary} onClick={() => uploadAlbumCover(openAlbumId)}>🖼 Загрузить обложку</button>
+                </div>
+
+                {/* Треки альбома */}
+                <div style={{ ...S.cardTitle, marginBottom: 8 }}>Треки в альбоме ({albumDetail.tracks?.length || 0})</div>
+                {(albumDetail.tracks || []).map(t => (
+                  <div key={t.id} style={{ ...S.card, display: "flex", alignItems: "center", gap: 10, padding: "10px 12px" }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</div>
+                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{t.id}</div>
+                    </div>
+                    <button disabled={busy} onClick={() => removeTrackFromAlbum(openAlbumId, t.id)} style={{ ...S.btnDanger, padding: "4px 10px", fontSize: 11 }}>Убрать</button>
+                  </div>
+                ))}
+
+                {/* Добавить трек в альбом */}
+                <div style={{ ...S.card, marginTop: 8 }}>
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginBottom: 6 }}>Добавить трек по ID</div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input value={addTrackToAlbumId} onChange={e => setAddTrackToAlbumId(e.target.value)} placeholder="ID трека" style={{ ...S.adminInput, flex: 1, marginBottom: 0 }} />
+                    <button disabled={busy || !addTrackToAlbumId.trim()} style={S.btnPrimary} onClick={() => addTrackToAlbum(openAlbumId)}>+</button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div>
+                {/* Создать альбом */}
+                <div style={S.card}>
+                  <div style={S.cardTitle}>Создать альбом</div>
+                  <input value={newAlbumTitle} onChange={e => setNewAlbumTitle(e.target.value)} placeholder="Название альбома" style={S.adminInput} />
+                  <select value={newAlbumArtistId} onChange={e => setNewAlbumArtistId(e.target.value)} style={{ ...S.adminInput, appearance: "none" }}>
+                    <option value="">Выбери артиста...</option>
+                    {adminArtists.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                  <input value={newAlbumYear} onChange={e => setNewAlbumYear(e.target.value)} placeholder="Год (необязательно)" type="number" style={S.adminInput} />
+                  <button disabled={busy || !newAlbumTitle.trim() || !newAlbumArtistId} style={S.btnPrimary} onClick={createAlbum}>➕ Создать</button>
+                </div>
+
+                {/* Список альбомов */}
+                {adminAlbums.length === 0 && <div style={S.empty}>Альбомов нет — они создаются автоматически при импорте треков</div>}
+                {adminAlbums.map(album => (
+                  <div key={album.id} style={{ ...S.card, display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }} onClick={() => openAlbumDetail(album.id)}>
+                    <div style={{ width: 52, height: 52, borderRadius: 8, overflow: "hidden", background: "rgba(255,255,255,0.07)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>
+                      {album.coverUrl ? <img src={album.coverUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" /> : "💿"}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{album.title}</div>
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>
+                        {album.artist?.name}{album.year ? ` · ${album.year}` : ""} · {album._count?.tracks || 0} тр.
+                      </div>
+                    </div>
+                    <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 18 }}>›</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

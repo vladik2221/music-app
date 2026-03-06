@@ -23,6 +23,15 @@ async function signCovers(tracks) {
   }));
 }
 
+async function signAlbumCovers(albums) {
+  return Promise.all(albums.map(async (a) => {
+    if (a.coverUrl && a.coverUrl.startsWith('covers/')) {
+      try { a = { ...a, coverUrl: await getSignedStreamUrl(a.coverUrl) }; } catch {}
+    }
+    return a;
+  }));
+}
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 router.post('/auth/telegram', authTelegram);
@@ -125,7 +134,6 @@ router.delete('/me/favorites/:trackId', requireAuth, attachUser, async (req, res
 
 // ── Listen History ────────────────────────────────────────────────────────────
 
-// Recent listens (last 50, deduplicated by track, most recent first)
 router.get('/me/history', requireAuth, attachUser, async (req, res) => {
   const rows = await prisma.listenHistory.findMany({
     where: { userId: req.user.id },
@@ -134,7 +142,6 @@ router.get('/me/history', requireAuth, attachUser, async (req, res) => {
     take: 200,
   });
 
-  // Deduplicate: keep first occurrence of each track (most recent listen)
   const seen = new Set();
   const unique = [];
   for (const r of rows) {
@@ -147,9 +154,7 @@ router.get('/me/history', requireAuth, attachUser, async (req, res) => {
   res.json({ ok: true, history: await signCovers(unique) });
 });
 
-// Top tracks by play count
 router.get('/me/top-tracks', requireAuth, attachUser, async (req, res) => {
-  // Count per track for this user
   const counts = await prisma.listenHistory.groupBy({
     by: ['trackId'],
     where: { userId: req.user.id },
@@ -178,7 +183,7 @@ router.get('/me/playlists', requireAuth, attachUser, async (req, res) => {
       playlistTracks: {
         include: { track: true },
         orderBy: { position: 'asc' },
-        take: 1, // just first track for cover preview
+        take: 1,
       },
       _count: { select: { playlistTracks: true } }
     },
@@ -282,6 +287,40 @@ router.get('/artists/:id', requireAuth, attachUser, async (req, res) => {
   res.json({ ok: true, artist: a, tracks: await signCovers(tracks) });
 });
 
+// ── Albums ────────────────────────────────────────────────────────────────────
+
+// Все альбомы артиста
+router.get('/artists/:id/albums', requireAuth, attachUser, async (req, res) => {
+  const albums = await prisma.album.findMany({
+    where: { artistId: req.params.id },
+    include: { _count: { select: { tracks: true } } },
+    orderBy: [{ year: 'desc' }, { createdAt: 'desc' }],
+  });
+  res.json({ ok: true, albums: await signAlbumCovers(albums) });
+});
+
+// Один альбом с треками
+router.get('/albums/:id', requireAuth, attachUser, async (req, res) => {
+  const album = await prisma.album.findUnique({
+    where: { id: req.params.id },
+    include: {
+      artist: true,
+      tracks: {
+        where: { isPublished: true },
+        orderBy: { title: 'asc' },
+      },
+    },
+  });
+  if (!album) return res.status(404).json({ ok: false, error: 'Album not found' });
+
+  let a = { ...album };
+  if (a.coverUrl?.startsWith('covers/')) {
+    try { a = { ...a, coverUrl: await getSignedStreamUrl(a.coverUrl) }; } catch {}
+  }
+
+  res.json({ ok: true, album: { ...a, tracks: await signCovers(a.tracks) } });
+});
+
 // ── Billing ───────────────────────────────────────────────────────────────────
 
 router.post('/billing/yookassa/create-payment', requireAuth, attachUser, async (req, res) => {
@@ -305,6 +344,11 @@ router.post('/billing/yookassa/webhook', express.json({ type: '*/*' }), async (r
     const obj = req.body?.object;
     const paymentId = obj?.id;
     if (!event || !paymentId) return res.sendStatus(200);
+
+    // Идемпотентность: не обрабатывать повторно
+    const existing = await prisma.payment.findUnique({ where: { providerPaymentId: paymentId } });
+    if (existing?.status === 'succeeded') return res.sendStatus(200);
+
     const fresh = await getYooKassaPayment(paymentId);
     await prisma.payment.updateMany({
       where: { providerPaymentId: paymentId },
@@ -452,7 +496,6 @@ router.post('/admin/artists/:id/photo', requireAuth, requireAdmin, artistPhotoUp
   res.json({ ok: true, artist: updated });
 });
 
-// Link track to artist
 router.post('/admin/tracks/:id/artist', requireAuth, requireAdmin, async (req, res) => {
   const { artistId } = req.body || {};
   const track = await prisma.track.findUnique({ where: { id: req.params.id } });
@@ -462,6 +505,105 @@ router.post('/admin/tracks/:id/artist', requireAuth, requireAdmin, async (req, r
     data: { artistId: artistId || null }
   });
   res.json({ ok: true, track: updated });
+});
+
+// ── Admin: Albums ─────────────────────────────────────────────────────────────
+
+const albumCoverUpload = multer({
+  dest: os.tmpdir(), limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => file.mimetype.startsWith('image/') ? cb(null, true) : cb(new Error('Images only'))
+});
+
+// Список всех альбомов (для админки)
+router.get('/admin/albums', requireAuth, requireAdmin, async (req, res) => {
+  const albums = await prisma.album.findMany({
+    orderBy: { createdAt: 'desc' },
+    include: {
+      artist: true,
+      _count: { select: { tracks: true } },
+    },
+  });
+  res.json({ ok: true, albums: await signAlbumCovers(albums) });
+});
+
+// Создать альбом
+router.post('/admin/albums', requireAuth, requireAdmin, async (req, res) => {
+  const { title, artistId, year } = req.body || {};
+  if (!title) return res.status(400).json({ ok: false, error: 'title required' });
+  if (!artistId) return res.status(400).json({ ok: false, error: 'artistId required' });
+  const artist = await prisma.artist.findUnique({ where: { id: artistId } });
+  if (!artist) return res.status(404).json({ ok: false, error: 'Artist not found' });
+
+  const album = await prisma.album.upsert({
+    where: { title_artistId: { title: String(title), artistId } },
+    update: { year: year ? Number(year) : null },
+    create: { title: String(title), artistId, year: year ? Number(year) : null },
+  });
+  res.json({ ok: true, album });
+});
+
+// Редактировать альбом (название, год)
+router.patch('/admin/albums/:id', requireAuth, requireAdmin, async (req, res) => {
+  const { title, year } = req.body || {};
+  const album = await prisma.album.findUnique({ where: { id: req.params.id } });
+  if (!album) return res.status(404).json({ ok: false, error: 'Album not found' });
+  const updated = await prisma.album.update({
+    where: { id: req.params.id },
+    data: {
+      ...(title !== undefined ? { title: String(title) } : {}),
+      ...(year !== undefined ? { year: year ? Number(year) : null } : {}),
+    }
+  });
+  res.json({ ok: true, album: updated });
+});
+
+// Загрузить обложку альбома
+router.post('/admin/albums/:id/cover', requireAuth, requireAdmin, albumCoverUpload.single('cover'), async (req, res) => {
+  const album = await prisma.album.findUnique({ where: { id: req.params.id } });
+  if (!album) return res.status(404).json({ ok: false, error: 'Album not found' });
+  if (!req.file) return res.status(400).json({ ok: false, error: 'cover required' });
+  if (album.coverUrl && album.coverUrl.startsWith('covers/')) await deleteFromS3(album.coverUrl);
+  const ext = path.extname(req.file.originalname || '') || '.jpg';
+  const s3Key = `covers/album_${req.params.id}${ext}`;
+  await uploadToS3(req.file.path, s3Key, req.file.mimetype || 'image/jpeg');
+  const updated = await prisma.album.update({ where: { id: req.params.id }, data: { coverUrl: s3Key } });
+  res.json({ ok: true, album: updated });
+});
+
+// Привязать трек к альбому
+router.post('/admin/albums/:id/tracks', requireAuth, requireAdmin, async (req, res) => {
+  const { trackId } = req.body || {};
+  const album = await prisma.album.findUnique({ where: { id: req.params.id } });
+  if (!album) return res.status(404).json({ ok: false, error: 'Album not found' });
+  const track = await prisma.track.findUnique({ where: { id: trackId } });
+  if (!track) return res.status(404).json({ ok: false, error: 'Track not found' });
+  const updated = await prisma.track.update({
+    where: { id: trackId },
+    data: { albumId: req.params.id }
+  });
+  res.json({ ok: true, track: updated });
+});
+
+// Убрать трек из альбома
+router.delete('/admin/albums/:id/tracks/:trackId', requireAuth, requireAdmin, async (req, res) => {
+  const track = await prisma.track.findUnique({ where: { id: req.params.trackId } });
+  if (!track) return res.status(404).json({ ok: false, error: 'Track not found' });
+  const updated = await prisma.track.update({
+    where: { id: req.params.trackId },
+    data: { albumId: null }
+  });
+  res.json({ ok: true, track: updated });
+});
+
+// Удалить альбом
+router.delete('/admin/albums/:id', requireAuth, requireAdmin, async (req, res) => {
+  const album = await prisma.album.findUnique({ where: { id: req.params.id } });
+  if (!album) return res.status(404).json({ ok: false, error: 'Album not found' });
+  if (album.coverUrl && album.coverUrl.startsWith('covers/')) await deleteFromS3(album.coverUrl);
+  // Открепляем треки от альбома перед удалением
+  await prisma.track.updateMany({ where: { albumId: req.params.id }, data: { albumId: null } });
+  await prisma.album.delete({ where: { id: req.params.id } });
+  res.json({ ok: true });
 });
 
 export default router;
