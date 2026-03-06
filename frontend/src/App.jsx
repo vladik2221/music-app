@@ -1095,7 +1095,7 @@ export default function App() {
 
   const tabs = [
     { href: "#/", icon: "🏠", label: "Каталог", match: r => r === "#/" || r === "" },
-    { href: "#/playlists", icon: "🎵", label: "Плейлисты", match: r => r.startsWith("#/playlists") },
+    { href: "#/favorites", icon: "❤️", label: "Избранное", match: r => r.startsWith("#/favorites") },
     { href: "#/artists", icon: "🎤", label: "Артисты", match: r => r.startsWith("#/artists") },
     { href: "#/history", icon: "🕐", label: "История", match: r => r.startsWith("#/history") },
     { href: "#/profile", icon: "👤", label: "Профиль", match: r => r.startsWith("#/profile") },
