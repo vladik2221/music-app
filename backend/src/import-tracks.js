@@ -2,10 +2,18 @@ import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
 import * as mm from 'music-metadata';
-import { prisma } from './prisma.js';
+import { PrismaClient } from '@prisma/client';
 import { uploadToS3 } from './storage.js';
 import os from 'os';
-const MUSIC_DIR = process.argv[2] || process.env.MUSIC_DIR || './music';
+
+const prisma = new PrismaClient();
+const MUSIC_DIR = process.argv[2] || 'C:\\tracks';
+
+// Проверяем есть ли несколько артистов в теге
+function hasMultipleArtists(artistTag) {
+  if (!artistTag) return false;
+  return /,|&|feat\.|ft\.|\/| x /i.test(artistTag);
+}
 
 async function findOrCreateArtist(name) {
   if (!name || name.trim() === '') return null;
@@ -31,7 +39,6 @@ async function findOrCreateAlbum(albumTitle, artistId, year, coverPic) {
   });
   if (existing) return existing;
 
-  // Загружаем обложку альбома в S3
   let coverUrl = null;
   if (coverPic) {
     try {
@@ -57,7 +64,6 @@ async function findOrCreateAlbum(albumTitle, artistId, year, coverPic) {
 async function importTracks() {
   if (!fs.existsSync(MUSIC_DIR)) {
     console.error(`❌ Папка не найдена: ${MUSIC_DIR}`);
-    console.error(`   Использование: node src/import-tracks.js "C:/Music/папка"`);
     process.exit(1);
   }
 
@@ -79,46 +85,57 @@ async function importTracks() {
     console.log(`\n⏳ ${file}`);
 
     try {
-      // Читаем ID3 теги
       const meta = await mm.parseFile(filePath);
       const tags = meta.common;
 
       const title = (tags.title || path.basename(file, path.extname(file))).trim();
-      const artistName = tags.artist || tags.albumartist || null;
+      const artistFull = tags.artist || tags.albumartist || null;
+      const isCollab = hasMultipleArtists(artistFull);
       const albumTitle = tags.album || null;
       const year = tags.year || null;
       const durationSec = Math.round(meta.format.duration || 0);
 
       console.log(`   Название: ${title}`);
-      console.log(`   Артист:   ${artistName || '—'}`);
+      console.log(`   Артист:   ${artistFull || '—'}${isCollab ? ' (коллаб — артист не создаётся)' : ''}`);
       console.log(`   Альбом:   ${albumTitle || '—'}${year ? ` (${year})` : ''}`);
 
-      // Пропускаем дубли
+      // Пропускаем только если трек уже загружен с файлом
       const exists = await prisma.track.findFirst({
         where: {
           title: { equals: title, mode: 'insensitive' },
-          artist: { equals: artistName, mode: 'insensitive' }
+          artist: { equals: artistFull, mode: 'insensitive' },
+          filePath: { not: null },
         }
       });
       if (exists) {
-        console.log(`  ⏭️  Уже есть в базе — пропускаю`);
+        console.log(`  ⏭️  Уже загружен — пропускаю`);
         skipped++;
         continue;
       }
 
-      // Создаём артиста
-      const artist = await findOrCreateArtist(artistName);
+      // Если трек есть но без файла — удаляем
+      const broken = await prisma.track.findFirst({
+        where: {
+          title: { equals: title, mode: 'insensitive' },
+          artist: { equals: artistFull, mode: 'insensitive' },
+          filePath: null,
+        }
+      });
+      if (broken) {
+        console.log(`  🔄 Трек без файла — перезаписываю`);
+        await prisma.track.delete({ where: { id: broken.id } });
+      }
 
-      // Создаём альбом
+      // Если один артист — создаём, если несколько — пропускаем создание
+      const artist = isCollab ? null : await findOrCreateArtist(artistFull);
       const album = artist
         ? await findOrCreateAlbum(albumTitle, artist.id, year, tags.picture?.[0])
         : null;
 
-      // Создаём трек в БД
       const track = await prisma.track.create({
         data: {
           title,
-          artist: artistName,
+          artist: artistFull,
           artistId: artist?.id || null,
           albumId: album?.id || null,
           durationSec,
@@ -138,7 +155,7 @@ async function importTracks() {
       });
       console.log(`  ✅ Аудио загружено в S3`);
 
-      // Загружаем обложку трека из тегов
+      // Загружаем обложку из тегов
       if (tags.picture?.length > 0) {
         try {
           const pic = tags.picture[0];
@@ -153,15 +170,15 @@ async function importTracks() {
           });
           console.log(`  🖼️  Обложка загружена`);
 
-          // Если у артиста ещё нет фото — берём обложку трека
+          // Если у артиста нет фото — берём обложку трека
           if (artist && !artist.photoUrl) {
-            const tmpArtistPhoto = path.join(os.tmpdir(), `artist_${artist.id}${coverExt}`);
-            fs.writeFileSync(tmpArtistPhoto, pic.data);
-            const s3ArtistKey = `artists/${artist.id}_photo${coverExt}`;
-            await uploadToS3(tmpArtistPhoto, s3ArtistKey, pic.format);
+            const tmpPhoto = path.join(os.tmpdir(), `artist_${artist.id}${coverExt}`);
+            fs.writeFileSync(tmpPhoto, pic.data);
+            const s3PhotoKey = `artists/${artist.id}_photo${coverExt}`;
+            await uploadToS3(tmpPhoto, s3PhotoKey, pic.format);
             await prisma.artist.update({
               where: { id: artist.id },
-              data: { photoUrl: s3ArtistKey }
+              data: { photoUrl: s3PhotoKey }
             });
             console.log(`  🎤 Фото артиста установлено`);
           }
@@ -170,13 +187,12 @@ async function importTracks() {
         }
       }
 
-      // Публикуем трек
       await prisma.track.update({
         where: { id: track.id },
         data: { isPublished: true }
       });
 
-      console.log(`  🎵 Добавлен: ${artistName || '—'} — ${title}`);
+      console.log(`  🎵 Добавлен: ${artistFull || '—'} — ${title}`);
       added++;
 
     } catch (e) {
@@ -191,12 +207,16 @@ async function importTracks() {
   console.log(`   ⏭️  Пропущено: ${skipped}`);
   console.log(`   ❌ Ошибок:    ${errors}`);
 
-  const artistCount = await prisma.artist.count();
-  const albumCount = await prisma.album.count();
-  const trackCount = await prisma.track.count({ where: { isPublished: true } });
-  console.log(`\n📈 Итого в базе: ${trackCount} треков · ${albumCount} альбомов · ${artistCount} артистов`);
-
-  await prisma.$disconnect();
+  try {
+    const artistCount = await prisma.artist.count();
+    const albumCount = await prisma.album.count();
+    const trackCount = await prisma.track.count({ where: { isPublished: true } });
+    console.log(`\n📈 Итого в базе: ${trackCount} треков · ${albumCount} альбомов · ${artistCount} артистов`);
+  } catch (e) {
+    console.log(`\n⚠️  Не удалось получить статистику: ${e.message}`);
+  } finally {
+    await prisma.$disconnect();
+  }
 }
 
 importTracks();
