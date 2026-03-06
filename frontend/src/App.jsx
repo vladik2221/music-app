@@ -100,8 +100,17 @@ export default function App() {
     setError("");
     try {
       if (!getToken()) await login();
-      const m = await api.me();
-      setMe(m);
+      try {
+        const m = await api.me();
+        setMe(m);
+      } catch (e) {
+        // Токен невалиден — логинимся заново
+        if (String(e.message).includes('Invalid token') || String(e.message).includes('401')) {
+          await login();
+          const m = await api.me();
+          setMe(m);
+        } else throw e;
+      }
       const t = await api.tracks("");
       setTracks(t.tracks || []);
       setQueue(t.tracks || []);
