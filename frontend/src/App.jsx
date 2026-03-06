@@ -437,7 +437,7 @@ export default function App() {
     useEffect(() => {
       Promise.all([
         api.artist(artistId),
-        fetch(`${import.meta.env.VITE_API_URL || ""}/artists/${artistId}/albums`, {
+        fetch(`${import.meta.env.VITE_API_BASE_URL || ""}/artists/${artistId}/albums`, {
           headers: { Authorization: `Bearer ${getToken()}` }
         }).then(r => r.json())
       ])
@@ -453,7 +453,7 @@ export default function App() {
     async function handleOpenAlbum(album) {
       setOpenAlbum(album);
       try {
-        const res = await fetch(`${import.meta.env.VITE_API_URL || ""}/albums/${album.id}`, {
+        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || ""}/albums/${album.id}`, {
           headers: { Authorization: `Bearer ${getToken()}` }
         }).then(r => r.json());
         setAlbumTracks(res.album?.tracks || []);
@@ -708,7 +708,7 @@ export default function App() {
     }
     async function loadAdminAlbums() {
       try {
-        const r = await fetch(`${import.meta.env.VITE_API_URL || ""}/admin/albums`, {
+        const r = await fetch(`${import.meta.env.VITE_API_BASE_URL || ""}/admin/albums`, {
           headers: { Authorization: `Bearer ${getToken()}` }
         }).then(res => res.json());
         setAdminAlbums(r.albums || []);
@@ -772,7 +772,7 @@ export default function App() {
     async function createAlbum() {
       if (!newAlbumTitle.trim() || !newAlbumArtistId) return; setBusy(true);
       try {
-        await fetch(`${import.meta.env.VITE_API_URL || ""}/admin/albums`, {
+        await fetch(`${import.meta.env.VITE_API_BASE_URL || ""}/admin/albums`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
           body: JSON.stringify({ title: newAlbumTitle.trim(), artistId: newAlbumArtistId, year: newAlbumYear || null })
@@ -786,7 +786,7 @@ export default function App() {
       const f = albumCoverById[id]; if (!f) return; setBusy(true);
       try {
         const fd = new FormData(); fd.append("cover", f);
-        await fetch(`${import.meta.env.VITE_API_URL || ""}/admin/albums/${id}/cover`, {
+        await fetch(`${import.meta.env.VITE_API_BASE_URL || ""}/admin/albums/${id}/cover`, {
           method: "POST",
           headers: { Authorization: `Bearer ${getToken()}` },
           body: fd
@@ -800,7 +800,7 @@ export default function App() {
     async function saveAlbumEdit(id) {
       const e = editAlbumById[id]; if (!e) return; setBusy(true);
       try {
-        await fetch(`${import.meta.env.VITE_API_URL || ""}/admin/albums/${id}`, {
+        await fetch(`${import.meta.env.VITE_API_BASE_URL || ""}/admin/albums/${id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
           body: JSON.stringify({ title: e.title, year: e.year || null })
@@ -814,7 +814,7 @@ export default function App() {
     async function deleteAlbum(id) {
       setBusy(true);
       try {
-        await fetch(`${import.meta.env.VITE_API_URL || ""}/admin/albums/${id}`, {
+        await fetch(`${import.meta.env.VITE_API_BASE_URL || ""}/admin/albums/${id}`, {
           method: "DELETE",
           headers: { Authorization: `Bearer ${getToken()}` }
         });
@@ -825,7 +825,7 @@ export default function App() {
 
     async function openAlbumDetail(id) {
       try {
-        const r = await fetch(`${import.meta.env.VITE_API_URL || ""}/albums/${id}`, {
+        const r = await fetch(`${import.meta.env.VITE_API_BASE_URL || ""}/albums/${id}`, {
           headers: { Authorization: `Bearer ${getToken()}` }
         }).then(res => res.json());
         setAlbumDetail(r.album);
@@ -836,7 +836,7 @@ export default function App() {
     async function addTrackToAlbum(albumId) {
       if (!addTrackToAlbumId.trim()) return; setBusy(true);
       try {
-        await fetch(`${import.meta.env.VITE_API_URL || ""}/admin/albums/${albumId}/tracks`, {
+        await fetch(`${import.meta.env.VITE_API_BASE_URL || ""}/admin/albums/${albumId}/tracks`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
           body: JSON.stringify({ trackId: addTrackToAlbumId.trim() })
@@ -849,7 +849,7 @@ export default function App() {
     async function removeTrackFromAlbum(albumId, trackId) {
       setBusy(true);
       try {
-        await fetch(`${import.meta.env.VITE_API_URL || ""}/admin/albums/${albumId}/tracks/${trackId}`, {
+        await fetch(`${import.meta.env.VITE_API_BASE_URL || ""}/admin/albums/${albumId}/tracks/${trackId}`, {
           method: "DELETE",
           headers: { Authorization: `Bearer ${getToken()}` }
         });
