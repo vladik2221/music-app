@@ -79,6 +79,7 @@ function TrackCard({ t, idx, list, onPlay, onToggleFav, fav, isPlaying, extraBad
 export default function App() {
   const route = useHashRoute();
   const playerRef = useRef(null);
+  const searchRef = useRef(null);
   const [ready, setReady] = useState(false);
   const [me, setMe] = useState(null);
   const [tracks, setTracks] = useState([]);
@@ -221,7 +222,7 @@ export default function App() {
         {ready && (
           <div>
             <div style={S.searchWrap}>
-              <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === "Enter" && doSearch()} placeholder="Поиск треков..." style={S.searchInput} />
+              <input ref={searchRef} value={q} onChange={e => { setQ(e.target.value); setTimeout(() => searchRef.current?.focus(), 0); }} onKeyDown={e => e.key === "Enter" && doSearch()} placeholder="Поиск треков..." style={S.searchInput} />
               <button style={S.searchBtn} onClick={doSearch}>Найти</button>
               {q && <button style={S.btnSecondary} onClick={async () => { setQ(""); const t = await api.tracks(""); setTracks(t.tracks || []); setQueue(t.tracks || []); setQueueIndex(-1); }}>✕</button>}
             </div>
@@ -1083,14 +1084,14 @@ export default function App() {
   // ── Routing ────────────────────────────────────────────────────────────────
 
   let page;
-  if (route.startsWith("#/favorites")) page = PageFavorites();
-  else if (route.startsWith("#/history")) page = PageHistory();
-  else if (route.startsWith("#/playlists")) page = PagePlaylists();
-  else if (route.startsWith("#/artists")) page = PageArtists();
-  else if (route.startsWith("#/profile")) page = PageProfile();
-  else if (route.startsWith("#/billing/return")) page = PageBillingReturn();
-  else if (route.startsWith("#/admin")) page = PageAdmin();
-  else page = PageCatalog();
+  if (route.startsWith("#/favorites")) page = <PageFavorites />;
+  else if (route.startsWith("#/history")) page = <PageHistory />;
+  else if (route.startsWith("#/playlists")) page = <PagePlaylists />;
+  else if (route.startsWith("#/artists")) page = <PageArtists />;
+  else if (route.startsWith("#/profile")) page = <PageProfile />;
+  else if (route.startsWith("#/billing/return")) page = <PageBillingReturn />;
+  else if (route.startsWith("#/admin")) page = <PageAdmin />;
+  else page = <PageCatalog />;
 
   const tabs = [
     { href: "#/", icon: "🏠", label: "Каталог", match: r => r === "#/" || r === "" },
