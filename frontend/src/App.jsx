@@ -1083,14 +1083,14 @@ export default function App() {
   // ── Routing ────────────────────────────────────────────────────────────────
 
   let page;
-  if (route.startsWith("#/favorites")) page = <PageFavorites />;
-  else if (route.startsWith("#/history")) page = <PageHistory />;
-  else if (route.startsWith("#/playlists")) page = <PagePlaylists />;
-  else if (route.startsWith("#/artists")) page = <PageArtists />;
-  else if (route.startsWith("#/profile")) page = <PageProfile />;
-  else if (route.startsWith("#/billing/return")) page = <PageBillingReturn />;
-  else if (route.startsWith("#/admin")) page = <PageAdmin />;
-  else page = <PageCatalog />;
+  if (route.startsWith("#/favorites")) page = PageFavorites();
+  else if (route.startsWith("#/history")) page = PageHistory();
+  else if (route.startsWith("#/playlists")) page = PagePlaylists();
+  else if (route.startsWith("#/artists")) page = PageArtists();
+  else if (route.startsWith("#/profile")) page = PageProfile();
+  else if (route.startsWith("#/billing/return")) page = PageBillingReturn();
+  else if (route.startsWith("#/admin")) page = PageAdmin();
+  else page = PageCatalog();
 
   const tabs = [
     { href: "#/", icon: "🏠", label: "Каталог", match: r => r === "#/" || r === "" },
