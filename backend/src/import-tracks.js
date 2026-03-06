@@ -2,11 +2,9 @@ import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
 import * as mm from 'music-metadata';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from './prisma.js';
 import { uploadToS3 } from './storage.js';
 import os from 'os';
-
-const prisma = new PrismaClient();
 const MUSIC_DIR = process.argv[2] || process.env.MUSIC_DIR || './music';
 
 async function findOrCreateArtist(name) {
