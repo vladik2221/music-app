@@ -1106,8 +1106,8 @@ export default function App() {
     <div style={S.app}>
       <div style={S.header}>
         <div>
-          <div style={S.logo}>🎧 Music</div>
-          <div style={S.logoSub}>Telegram Mini App</div>
+          <div style={S.logo}>🎧 MusicCloud</div>
+          <div style={S.logoSub}>Слушай без блюра</div>
         </div>
         <div style={S.headerBtns}>
           <button style={S.btnSecondary} onClick={boot}>↺</button>
