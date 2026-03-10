@@ -1047,7 +1047,7 @@ export default function App() {
         {page}
       </PageTransition>
 
-      <div style={{ paddingBottom: current ? 60 : 0 }}>
+      <div>
         <SpotifyPlayer ref={playerRef} track={current} audioUrl={audioUrl} onPrev={playPrev} onNext={playNext} />
       </div>
 
