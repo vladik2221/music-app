@@ -671,7 +671,7 @@ function PageAdmin({ isAdmin }) {
   return (
     <div style={S.page}>
       <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-        {[["tracks", "Треки"], ["artists", "Артисты"], ["albums", "Альбомы"]].map(([key, label]) => (
+        {[["tracks", "Треки"], ["artists", "Артисты"], ["albums", "Альбомы"], ["broadcast", "📢 Рассылка"]].map(([key, label]) => (
           <button key={key} onClick={() => setAdminTab(key)} style={{ ...(adminTab === key ? S.btnPrimary : S.btnSecondary), borderRadius: 20, padding: "7px 16px", fontSize: 13 }}>
             {label}
           </button>
@@ -862,6 +862,112 @@ function PageAdmin({ isAdmin }) {
           )}
         </div>
       )}
+
+      {/* Рассылка */}
+      {adminTab === "broadcast" && (
+        <BroadcastTab />
+      )}
+    </div>
+  );
+}
+
+function BroadcastTab() {
+  const [text, setText] = useState("");
+  const [photoUrl, setPhotoUrl] = useState("");
+  const [buttonText, setButtonText] = useState("");
+  const [buttonUrl, setButtonUrl] = useState("");
+  const [audienceType, setAudienceType] = useState("all");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState("");
+
+  async function sendBroadcast() {
+    if (!text.trim() && !photoUrl.trim()) return;
+    setBusy(true);
+    setResult(null);
+    setError("");
+    try {
+      const r = await fetch(`${API_BASE}/admin/broadcast`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({
+          text: text.trim() || undefined,
+          photoUrl: photoUrl.trim() || undefined,
+          buttonText: buttonText.trim() || undefined,
+          buttonUrl: buttonUrl.trim() || undefined,
+          audienceType,
+        })
+      });
+      const data = await r.json();
+      if (data.ok) setResult(data);
+      else setError(data.error || "Ошибка");
+    } catch (e) { setError(String(e.message || e)); } finally { setBusy(false); }
+  }
+
+  const S_adminInput = { width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, padding: "10px 14px", color: "#fff", fontSize: 14, outline: "none", marginBottom: 8 };
+
+  return (
+    <div>
+      <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 16, padding: 16, marginBottom: 12 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>📢 Новая рассылка</div>
+
+        {/* Аудитория */}
+        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginBottom: 6 }}>Кому отправить</div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          {[["all", "Всем пользователям"], ["active", "Только с подпиской"]].map(([val, label]) => (
+            <button key={val} onClick={() => setAudienceType(val)} style={{
+              background: audienceType === val ? "#1db954" : "rgba(255,255,255,0.1)",
+              color: audienceType === val ? "#000" : "#fff",
+              border: "none", borderRadius: 20, padding: "6px 14px", fontSize: 12, cursor: "pointer", fontWeight: audienceType === val ? 600 : 400
+            }}>{label}</button>
+          ))}
+        </div>
+
+        {/* Фото URL */}
+        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginBottom: 4 }}>🖼 Ссылка на фото (необязательно)</div>
+        <input value={photoUrl} onChange={e => setPhotoUrl(e.target.value)} placeholder="https://example.com/photo.jpg" style={S_adminInput} />
+
+        {/* Текст */}
+        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginBottom: 4 }}>✏️ Текст сообщения (поддерживается HTML: &lt;b&gt;, &lt;i&gt;, &lt;a&gt;)</div>
+        <textarea
+          value={text}
+          onChange={e => setText(e.target.value)}
+          placeholder="Привет! 🎵 Новые треки уже в приложении..."
+          rows={4}
+          style={{ ...S_adminInput, resize: "vertical", fontFamily: "inherit" }}
+        />
+
+        {/* Кнопка */}
+        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginBottom: 4 }}>🔘 Inline кнопка (необязательно)</div>
+        <input value={buttonText} onChange={e => setButtonText(e.target.value)} placeholder="Текст кнопки" style={S_adminInput} />
+        <input value={buttonUrl} onChange={e => setButtonUrl(e.target.value)} placeholder="https://t.me/твойбот/app" style={S_adminInput} />
+
+        {/* Превью */}
+        {(text || photoUrl) && (
+          <div style={{ background: "rgba(255,255,255,0.06)", borderRadius: 12, padding: 12, marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 6 }}>Превью:</div>
+            {photoUrl && <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginBottom: 4 }}>📷 {photoUrl}</div>}
+            {text && <div style={{ fontSize: 13, color: "#fff", whiteSpace: "pre-wrap" }}>{text}</div>}
+            {buttonText && <div style={{ marginTop: 8, display: "inline-block", background: "rgba(29,185,84,0.2)", border: "1px solid rgba(29,185,84,0.4)", borderRadius: 8, padding: "4px 12px", fontSize: 12, color: "#1db954" }}>{buttonText}</div>}
+          </div>
+        )}
+
+        {error && <div style={{ background: "rgba(255,59,48,0.1)", border: "1px solid rgba(255,59,48,0.3)", borderRadius: 12, padding: "10px 14px", fontSize: 13, color: "#ff6b6b", marginBottom: 12 }}>⚠️ {error}</div>}
+
+        {result && (
+          <div style={{ background: "rgba(29,185,84,0.1)", border: "1px solid rgba(29,185,84,0.3)", borderRadius: 12, padding: "10px 14px", fontSize: 13, color: "#1db954", marginBottom: 12 }}>
+            ✅ Отправлено: {result.sent} / {result.total} (не доставлено: {result.failed})
+          </div>
+        )}
+
+        <button
+          disabled={busy || (!text.trim() && !photoUrl.trim())}
+          style={{ background: "#1db954", color: "#000", border: "none", borderRadius: 20, padding: "10px 20px", fontSize: 14, fontWeight: 600, cursor: "pointer", width: "100%", opacity: busy ? 0.6 : 1 }}
+          onClick={sendBroadcast}
+        >
+          {busy ? "Отправляется..." : "📢 Отправить рассылку"}
+        </button>
+      </div>
     </div>
   );
 }

@@ -615,4 +615,56 @@ router.delete('/admin/albums/:id', requireAuth, requireAdmin, async (req, res) =
   res.json({ ok: true });
 });
 
+// ── Broadcast ─────────────────────────────────────────────────────────────────
+
+router.post('/admin/broadcast', requireAuth, requireAdmin, async (req, res) => {
+  const { text, photoUrl, buttonText, buttonUrl, audienceType } = req.body;
+  if (!text && !photoUrl) return res.status(400).json({ ok: false, error: 'text or photoUrl required' });
+
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) return res.status(500).json({ ok: false, error: 'TELEGRAM_BOT_TOKEN not set' });
+
+  // Получаем пользователей
+  const whereClause = audienceType === 'active'
+    ? { accessEndsAt: { gt: new Date() } }
+    : {};
+  const users = await prisma.user.findMany({ where: whereClause, select: { telegramId: true } });
+
+  const replyMarkup = buttonText && buttonUrl
+    ? JSON.stringify({ inline_keyboard: [[{ text: buttonText, url: buttonUrl }]] })
+    : undefined;
+
+  let sent = 0, failed = 0;
+
+  for (const user of users) {
+    try {
+      const chatId = user.telegramId;
+      let url, body;
+
+      if (photoUrl) {
+        url = `https://api.telegram.org/bot${token}/sendPhoto`;
+        body = { chat_id: chatId, photo: photoUrl, caption: text || undefined, parse_mode: 'HTML' };
+      } else {
+        url = `https://api.telegram.org/bot${token}/sendMessage`;
+        body = { chat_id: chatId, text, parse_mode: 'HTML' };
+      }
+
+      if (replyMarkup) body.reply_markup = replyMarkup;
+
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await r.json();
+      if (data.ok) sent++; else failed++;
+    } catch { failed++; }
+
+    // Небольшая задержка чтобы не превысить лимиты Telegram
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+
+  res.json({ ok: true, sent, failed, total: users.length });
+});
+
 export default router;
