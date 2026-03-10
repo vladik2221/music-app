@@ -1047,7 +1047,7 @@ export default function App() {
         {page}
       </PageTransition>
 
-      <SpotifyPlayer ref={playerRef} track={current} audioUrl={audioUrl} onPrev={playPrev} onNext={playNext} />
+      <SpotifyPlayer ref={playerRef} track={current} audioUrl={audioUrl} onPrev={playPrev} onNext={playNext} onPlay={(t) => play(t, queue, queueIndex)} />
 
       <div style={{ ...S.tabBar, bottom: current ? 68 : 0 }}>
         {tabs.map(tab => (

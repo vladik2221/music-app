@@ -69,7 +69,7 @@ function IconSpinner() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const SpotifyPlayer = forwardRef(function SpotifyPlayer(
-  { track, audioUrl, onPrev, onNext },
+  { track, audioUrl, onPrev, onNext, onPlay },
   ref
 ) {
   const audioRef = useRef(null);
@@ -149,8 +149,15 @@ const SpotifyPlayer = forwardRef(function SpotifyPlayer(
 
   function toggle() {
     if (!audioRef.current) return;
-    if (playing) { audioRef.current.pause(); }
-    else { audioRef.current.play(); }
+    if (playing) {
+      audioRef.current.pause();
+    } else {
+      if (!audioUrl) {
+        onPlay && onPlay(track);
+      } else {
+        audioRef.current.play();
+      }
+    }
   }
 
   function onCanPlay() {
