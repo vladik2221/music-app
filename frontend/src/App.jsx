@@ -23,7 +23,7 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 // ── Styles ─────────────────────────────────────────────────────────────────
 const S = {
   app: { minHeight: "100dvh", background: "#0a0a0a", color: "#fff", fontFamily: "'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif", paddingBottom: 140 },
-  header: { position: "sticky", top: 0, zIndex: 30, background: "rgba(10,10,10,0.92)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)", borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "12px 16px", paddingTop: "max(12px, env(safe-area-inset-top))", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  header: { position: "sticky", top: 0, zIndex: 30, background: "rgba(10,10,10,0.92)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)", borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 },
   logo: { fontSize: 17, fontWeight: 700, letterSpacing: -0.5 },
   logoSub: { fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 1 },
   headerBtns: { display: "flex", gap: 6 },
@@ -976,6 +976,7 @@ function BroadcastTab() {
 export default function App() {
   const route = useHashRoute();
   const playerRef = useRef(null);
+  const [safeTop, setSafeTop] = useState(0);
   const [ready, setReady] = useState(false);
   const [me, setMe] = useState(null);
   const [tracks, setTracks] = useState([]);
@@ -1016,6 +1017,9 @@ export default function App() {
       tg()?.expand?.();
       tg()?.disableClosingConfirmation?.();
       tg()?.isVerticalSwipesEnabled && tg()?.disableVerticalSwipes?.();
+      // Получаем высоту статус-бара от Telegram
+      const topInset = tg()?.safeAreaInset?.top || tg()?.contentSafeAreaInset?.top || 0;
+      setSafeTop(topInset);
       setReady(true);
     } catch (e) {
       const msg = String(e.message || e);
@@ -1140,7 +1144,7 @@ export default function App() {
 
   return (
     <div style={S.app}>
-      <div style={S.header}>
+      <div style={{ ...S.header, paddingTop: safeTop ? `${safeTop + 12}px` : "12px" }}>
         <div>
           <div style={S.logo}>🎧 MusicCloud</div>
           <div style={S.logoSub}>Слушай без блюра</div>
