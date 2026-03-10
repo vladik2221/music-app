@@ -874,7 +874,9 @@ export default function App() {
   const [me, setMe] = useState(null);
   const [tracks, setTracks] = useState([]);
   const [favorites, setFavorites] = useState([]);
-  const [current, setCurrent] = useState(null);
+  const [current, setCurrent] = useState(() => {
+  try { const s = localStorage.getItem("lastTrack"); return s ? JSON.parse(s) : null; } catch { return null; }
+  });
   const [audioUrl, setAudioUrl] = useState("");
   const [queue, setQueue] = useState([]);
   const [queueIndex, setQueueIndex] = useState(-1);
@@ -918,6 +920,12 @@ export default function App() {
   }
 
   useEffect(() => { boot(); }, []);
+
+  useEffect(() => {
+   if (current) {
+     try { localStorage.setItem("lastTrack", JSON.stringify(current)); } catch {}
+   }
+  }, [current]);
 
   const toggleFav = useCallback(async (trackId) => {
     if (isFav.has(trackId)) await api.favDel(trackId);
@@ -968,9 +976,19 @@ export default function App() {
   }, []);
 
   async function startTrial() {
-    try { const m = await api.trialStart(); setMe(m); }
-    catch (e) { setError(String(e.message || e)); }
-  }
+  try {
+    if (!getToken()) await login();
+    const m = await api.trialStart();
+    setMe(m);
+    // Перезагружаем данные после активации триала
+    const t = await api.tracks("");
+    setTracks(t.tracks || []);
+    setQueue(t.tracks || []);
+    const f = await api.favorites();
+    setFavorites(f.favorites || []);
+    setReady(true);
+  } catch (e) { setError(String(e.message || e)); }
+}
 
   async function subscribe() {
     try { const p = await api.createPayment(); if (p.confirmationUrl) window.location.href = p.confirmationUrl; }
