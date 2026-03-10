@@ -1047,11 +1047,9 @@ export default function App() {
         {page}
       </PageTransition>
 
-      <div>
-        <SpotifyPlayer ref={playerRef} track={current} audioUrl={audioUrl} onPrev={playPrev} onNext={playNext} />
-      </div>
+      <SpotifyPlayer ref={playerRef} track={current} audioUrl={audioUrl} onPrev={playPrev} onNext={playNext} />
 
-      <div style={{ ...S.tabBar, bottom: current ? 84 : 0 }}>
+      <div style={{ ...S.tabBar, bottom: current ? 68 : 0 }}>
         {tabs.map(tab => (
           <a key={tab.href} href={tab.href} style={{ textDecoration: "none", flex: 1 }}>
             <div style={S.tabItem(tab.match(route))}>
