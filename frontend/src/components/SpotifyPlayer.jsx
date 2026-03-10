@@ -98,6 +98,55 @@ const SpotifyPlayer = forwardRef(function SpotifyPlayer(
     if (audioRef.current) audioRef.current.volume = 1;
   }, []);
 
+  // ── Media Session API — управление с экрана блокировки ───────────────────
+  useEffect(() => {
+    if (!("mediaSession" in navigator) || !track) return;
+
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: track.title || "Неизвестный трек",
+      artist: track.artist || "Неизвестный артист",
+      artwork: track.coverUrl
+        ? [{ src: track.coverUrl, sizes: "512x512", type: "image/jpeg" }]
+        : [],
+    });
+
+    navigator.mediaSession.setActionHandler("play", () => {
+      audioRef.current?.play();
+    });
+    navigator.mediaSession.setActionHandler("pause", () => {
+      audioRef.current?.pause();
+    });
+    navigator.mediaSession.setActionHandler("previoustrack", () => {
+      onPrev();
+    });
+    navigator.mediaSession.setActionHandler("nexttrack", () => {
+      onNext();
+    });
+    navigator.mediaSession.setActionHandler("seekto", (details) => {
+      if (audioRef.current && details.seekTime != null) {
+        audioRef.current.currentTime = details.seekTime;
+      }
+    });
+
+    return () => {
+      ["play", "pause", "previoustrack", "nexttrack", "seekto"].forEach(action => {
+        try { navigator.mediaSession.setActionHandler(action, null); } catch {}
+      });
+    };
+  }, [track, onPrev, onNext]);
+
+  // Обновляем позицию трека для прогресс-бара на экране блокировки
+  useEffect(() => {
+    if (!("mediaSession" in navigator) || !duration) return;
+    try {
+      navigator.mediaSession.setPositionState({
+        duration,
+        playbackRate: 1,
+        position: progress,
+      });
+    } catch {}
+  }, [progress, duration]);
+
   function toggle() {
     if (!audioRef.current) return;
     if (playing) { audioRef.current.pause(); }
