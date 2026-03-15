@@ -9,6 +9,9 @@ export function addDays(date, days) {
 }
 
 export function isAccessActive(user) {
+  // Админ всегда имеет доступ
+  if (user.role === 'admin') return true;
+
   const t = Date.now();
   const trialOk = user.trialEndsAt && user.trialEndsAt.getTime() > t;
   const paidOk = user.accessEndsAt && user.accessEndsAt.getTime() > t;
