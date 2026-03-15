@@ -1,3 +1,6 @@
+export async function handleUpdate(update) {
+  console.log('Handling update type:', Object.keys(update).join(','));
+  
 import { prisma } from './prisma.js';
 import { addDays, isAccessActive, now } from './utils.js';
 
@@ -81,10 +84,16 @@ export async function handleUpdate(update) {
     const firstName = msg.from?.first_name;
     const text = msg.text || '';
 
-    if (text.startsWith('/start')) {
+  if (text.startsWith('/start')) {
+    console.log('Sending welcome to', chatId);
+    try {
       await sendWelcome(chatId, firstName);
-      return;
+      console.log('Welcome sent OK');
+    } catch(e) {
+      console.error('Welcome error:', e.message);
     }
+  return;
+  }
   }
 
   // Нажатие на inline кнопку
