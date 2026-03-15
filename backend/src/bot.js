@@ -1,11 +1,8 @@
-export async function handleUpdate(update) {
-  console.log('Handling update type:', Object.keys(update).join(','));
-  
 import { prisma } from './prisma.js';
-import { addDays, isAccessActive, now } from './utils.js';
+import { addDays, now } from './utils.js';
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const PROVIDER_TOKEN = process.env.TELEGRAM_PAYMENT_TOKEN; // токен провайдера из ЮКасса
+const PROVIDER_TOKEN = process.env.TELEGRAM_PAYMENT_TOKEN;
 const MINI_APP_URL = process.env.FRONTEND_URL || 'https://24musiccloud.ru';
 const SUBSCRIPTION_PRICE = Number(process.env.SUBSCRIPTION_PRICE_RUB || 110);
 const TRIAL_DAYS = Number(process.env.TRIAL_DAYS || 14);
@@ -21,7 +18,6 @@ async function tgRequest(method, body) {
   return r.json();
 }
 
-// ── Отправка приветствия при /start ────────────────────────────────────────
 export async function sendWelcome(chatId, firstName) {
   await tgRequest('sendMessage', {
     chat_id: chatId,
@@ -35,14 +31,13 @@ export async function sendWelcome(chatId, firstName) {
     reply_markup: {
       inline_keyboard: [
         [{ text: '🎵 Открыть MusicCloud', web_app: { url: MINI_APP_URL } }],
-        [{ text: '🆓 Попробовать бесплатно (14 дней)', callback_data: 'start_trial' }],
+        [{ text: `🆓 Попробовать бесплатно (${TRIAL_DAYS} дней)`, callback_data: 'start_trial' }],
         [{ text: '💳 Купить подписку', callback_data: 'buy_subscription' }],
       ]
     }
   });
 }
 
-// ── Отправка invoice для оплаты ────────────────────────────────────────────
 export async function sendPaymentInvoice(chatId) {
   await tgRequest('sendInvoice', {
     chat_id: chatId,
@@ -58,7 +53,6 @@ export async function sendPaymentInvoice(chatId) {
   });
 }
 
-// ── Напоминание об истечении триала ───────────────────────────────────────
 export async function sendTrialExpiringSoon(chatId, firstName) {
   await tgRequest('sendMessage', {
     chat_id: chatId,
@@ -75,39 +69,36 @@ export async function sendTrialExpiringSoon(chatId, firstName) {
   });
 }
 
-// ── Обработка входящих апдейтов от Telegram ───────────────────────────────
 export async function handleUpdate(update) {
-  // Обычное сообщение или команда /start
+  console.log('Handling update type:', Object.keys(update).join(','));
+
   if (update.message) {
     const msg = update.message;
     const chatId = msg.chat.id;
     const firstName = msg.from?.first_name;
     const text = msg.text || '';
 
-  if (text.startsWith('/start')) {
-    console.log('Sending welcome to', chatId);
-    try {
-      await sendWelcome(chatId, firstName);
-      console.log('Welcome sent OK');
-    } catch(e) {
-      console.error('Welcome error:', e.message);
+    if (text.startsWith('/start')) {
+      console.log('Sending welcome to', chatId);
+      try {
+        await sendWelcome(chatId, firstName);
+        console.log('Welcome sent OK');
+      } catch (e) {
+        console.error('Welcome error:', e.message);
+      }
+      return;
     }
-  return;
-  }
   }
 
-  // Нажатие на inline кнопку
   if (update.callback_query) {
     const cb = update.callback_query;
     const chatId = cb.message.chat.id;
     const telegramId = String(cb.from.id);
     const firstName = cb.from.first_name;
 
-    // Подтверждаем получение callback
     await tgRequest('answerCallbackQuery', { callback_query_id: cb.id });
 
     if (cb.data === 'start_trial') {
-      // Активируем триал в БД
       const user = await prisma.user.findFirst({ where: { telegramId } });
       if (!user) {
         await tgRequest('sendMessage', {
@@ -151,7 +142,6 @@ export async function handleUpdate(update) {
     }
   }
 
-  // Подтверждение платежа (pre_checkout_query) — обязательно нужно ответить
   if (update.pre_checkout_query) {
     await tgRequest('answerPreCheckoutQuery', {
       pre_checkout_query_id: update.pre_checkout_query.id,
@@ -160,14 +150,11 @@ export async function handleUpdate(update) {
     return;
   }
 
-  // Успешный платёж
   if (update.message?.successful_payment) {
-    const payment = update.message.successful_payment;
     const chatId = update.message.chat.id;
     const telegramId = String(update.message.from.id);
     const firstName = update.message.from.first_name;
 
-    // Активируем подписку на 30 дней
     const accessEndsAt = addDays(now(), 30);
     await prisma.user.update({
       where: { telegramId },
@@ -188,7 +175,6 @@ export async function handleUpdate(update) {
   }
 }
 
-// ── Polling (получаем апдейты каждые 2 сек) ───────────────────────────────
 let pollingOffset = 0;
 
 export async function startPolling() {
@@ -198,7 +184,7 @@ export async function startPolling() {
       const res = await fetch(`${API}/getUpdates?offset=${pollingOffset}&timeout=25`);
       const data = await res.json();
       if (data.ok && data.result?.length) {
-        console.log('Got updates:', JSON.stringify(data.result));
+        console.log('Got updates:', data.result.length);
         for (const update of data.result) {
           pollingOffset = update.update_id + 1;
           handleUpdate(update).catch(e => console.error('Bot update error:', e));
