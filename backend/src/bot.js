@@ -15,7 +15,9 @@ async function tgRequest(method, body) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
-  return r.json();
+  const json = await r.json();
+  if (!json.ok) console.error('tgRequest error:', method, JSON.stringify(json));
+  return json;
 }
 
 export async function sendWelcome(chatId, firstName) {
