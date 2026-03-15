@@ -189,6 +189,7 @@ export async function startPolling() {
       const res = await fetch(`${API}/getUpdates?offset=${pollingOffset}&timeout=25`);
       const data = await res.json();
       if (data.ok && data.result?.length) {
+        console.log('Got updates:', JSON.stringify(data.result));
         for (const update of data.result) {
           pollingOffset = update.update_id + 1;
           handleUpdate(update).catch(e => console.error('Bot update error:', e));
