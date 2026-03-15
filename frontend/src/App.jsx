@@ -997,7 +997,7 @@ export default function App() {
   async function boot() {
     setError("");
     try {
-      if (!getToken()) await login();
+      await login(); // всегда получаем свежий токен с актуальной ролью
       try {
         const m = await api.me();
         setMe(m);
