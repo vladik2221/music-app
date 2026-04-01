@@ -245,6 +245,7 @@ function PageHistory({ current, favorites, onPlay, onToggleFav }) {
   const [topTracks, setTopTracks] = useState(historyCache.top || []);
   const [tab, setTab] = useState("recent");
   const [loading, setLoading] = useState(!historyCache.data);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (historyCache.data) return;
@@ -255,7 +256,7 @@ function PageHistory({ current, favorites, onPlay, onToggleFav }) {
         setHistory(historyCache.data);
         setTopTracks(historyCache.top);
       })
-      .catch(() => {})
+      .catch(e => setError(String(e.message || e)))
       .finally(() => setLoading(false));
   }, []);
 
@@ -270,7 +271,8 @@ function PageHistory({ current, favorites, onPlay, onToggleFav }) {
           </button>
         ))}
       </div>
-      {loading && <Spinner />}
+      {error && <ErrorBanner message={error} />}
+      {loading && <Spinner />
       {!loading && list.length === 0 && <div style={S.empty}>Пока пусто — начни слушать треки</div>}
       <div style={S.grid}>
         {list.map((t, idx) => (
@@ -289,6 +291,7 @@ function PageArtistDetail({ artistId, onBack, current, onPlay }) {
   const [openAlbum, setOpenAlbum] = useState(null);
   const [albumTracks, setAlbumTracks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     Promise.all([
@@ -300,7 +303,7 @@ function PageArtistDetail({ artistId, onBack, current, onPlay }) {
         setArtTracks(artistRes.tracks || []);
         setAlbums(albumsRes.albums || []);
       })
-      .catch(() => {})
+      .catch(e => setError(String(e.message || e)))
       .finally(() => setLoading(false));
   }, [artistId]);
 
@@ -313,6 +316,7 @@ function PageArtistDetail({ artistId, onBack, current, onPlay }) {
   }
 
   if (loading) return <div style={S.page}><Spinner fullPage /></div>;
+  if (error) return <div style={S.page}><ErrorBanner message={error} /></div>;
   if (!artist) return <div style={S.page}><div style={S.empty}>Артист не найден</div></div>;
 
   if (openAlbum) {
@@ -414,12 +418,13 @@ function PageArtists({ current, onPlay }) {
   const [artists, setArtists] = useState(artistsCache.data || []);
   const [loading, setLoading] = useState(!artistsCache.data);
   const [openId, setOpenId] = useState(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (artistsCache.data) return;
     api.artists()
       .then(r => { artistsCache.data = r.artists || []; setArtists(artistsCache.data); })
-      .catch(() => {})
+      .catch(e => setError(String(e.message || e)))
       .finally(() => setLoading(false));
   }, []);
 
@@ -428,8 +433,9 @@ function PageArtists({ current, onPlay }) {
   return (
     <div style={S.page}>
       <div style={S.sectionTitle}>Артисты</div>
+      {error && <ErrorBanner message={error} />}
       {loading && <Spinner />}
-      {!loading && artists.length === 0 && <div style={S.empty}>Нет артистов</div>}
+      {!loading && !error && artists.length === 0 && <div style={S.empty}>Нет артистов</div>}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {artists.map(a => (
           <div key={a.id} style={{ ...S.card, display: "flex", alignItems: "center", gap: 14, cursor: "pointer" }} onClick={() => setOpenId(a.id)}>
@@ -1040,10 +1046,14 @@ export default function App() {
   }, [current]);
 
   const toggleFav = useCallback(async (trackId) => {
-    if (isFav.has(trackId)) await api.favDel(trackId);
-    else await api.favAdd(trackId);
-    const f = await api.favorites();
-    setFavorites(f.favorites || []);
+    try {
+      if (isFav.has(trackId)) await api.favDel(trackId);
+      else await api.favAdd(trackId);
+      const f = await api.favorites();
+      setFavorites(f.favorites || []);
+    } catch (e) {
+      setError(String(e.message || e));
+    }
   }, [isFav]);
 
   const play = useCallback(async (track, list, idx) => {
@@ -1074,17 +1084,25 @@ export default function App() {
   }
 
   const handleSearch = useCallback(async (q) => {
-    const t = await api.tracks(q);
-    setTracks(t.tracks || []);
-    setQueue(t.tracks || []);
-    setQueueIndex(-1);
+    try {
+      const t = await api.tracks(q);
+      setTracks(t.tracks || []);
+      setQueue(t.tracks || []);
+      setQueueIndex(-1);
+    } catch (e) {
+      setError(String(e.message || e));
+    }
   }, []);
 
   const handleClearSearch = useCallback(async () => {
-    const t = await api.tracks("");
-    setTracks(t.tracks || []);
-    setQueue(t.tracks || []);
-    setQueueIndex(-1);
+    try {
+      const t = await api.tracks("");
+      setTracks(t.tracks || []);
+      setQueue(t.tracks || []);
+      setQueueIndex(-1);
+    } catch (e) {
+      setError(String(e.message || e));
+    }
   }, []);
 
   async function startTrial() {

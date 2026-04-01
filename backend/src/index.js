@@ -13,6 +13,13 @@ app.use(express.json());
 app.get('/health', (req, res) => res.json({ ok: true }));
 app.use(router);
 
+// Global error handler — catches errors forwarded via next(err)
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, _next) => {
+  console.error(err);
+  res.status(500).json({ ok: false, error: 'Internal server error' });
+});
+
 const port = Number(process.env.PORT || 3000);
 app.listen(port, () => {
   console.log(`Backend listening on http://localhost:${port}`);

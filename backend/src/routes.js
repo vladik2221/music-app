@@ -12,6 +12,17 @@ import { uploadToS3, deleteFromS3, getSignedStreamUrl } from './storage.js';
 
 const router = express.Router();
 
+// Wrap async route handlers so unhandled rejections are forwarded to Express
+// error middleware (Express 4 does not catch async errors automatically)
+['get', 'post', 'put', 'patch', 'delete'].forEach(m => {
+  const orig = router[m].bind(router);
+  router[m] = (path, ...args) => orig(path, ...args.map(fn =>
+    typeof fn === 'function'
+      ? (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next)
+      : fn
+  ));
+});
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 async function signCovers(tracks) {
@@ -43,7 +54,7 @@ router.get('/me', requireAuth, attachUser, async (req, res) => {
 });
 
 router.post('/me/trial/start', requireAuth, attachUser, async (req, res) => {
-  const trialDays = Number(process.env.TRIAL_DAYS || 7);
+  const trialDays = Number(process.env.TRIAL_DAYS || 14);
   if (req.user.trialStartedAt) {
     return res.json({ ok: true, user: sanitizeUser(req.user), accessActive: isAccessActive(req.user), message: 'Trial already started' });
   }
