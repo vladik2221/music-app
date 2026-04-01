@@ -100,18 +100,25 @@ export async function handleUpdate(update) {
 
     await tgRequest('answerCallbackQuery', { callback_query_id: cb.id });
 
+    const messageId = cb.message.message_id;
+
     if (cb.data === 'start_trial') {
       const user = await prisma.user.findFirst({ where: { telegramId } });
       if (!user) {
-        await tgRequest('sendMessage', {
+        await tgRequest('editMessageText', {
           chat_id: chatId,
-          text: '❌ Сначала открой приложение через кнопку выше, чтобы зарегистрироваться.'
+          message_id: messageId,
+          text: '❌ Сначала открой приложение через кнопку выше, чтобы зарегистрироваться.',
+          reply_markup: {
+            inline_keyboard: [[{ text: '🎵 Открыть MusicCloud', web_app: { url: MINI_APP_URL } }]]
+          }
         });
         return;
       }
       if (user.trialStartedAt) {
-        await tgRequest('sendMessage', {
+        await tgRequest('editMessageText', {
           chat_id: chatId,
+          message_id: messageId,
           text: `ℹ️ Ты уже использовал пробный период. Оформи подписку чтобы продолжить.`,
           reply_markup: {
             inline_keyboard: [[{ text: `💳 Купить — ${SUBSCRIPTION_PRICE} ₽`, callback_data: 'buy_subscription' }]]
@@ -125,8 +132,9 @@ export async function handleUpdate(update) {
         where: { telegramId },
         data: { trialStartedAt, trialEndsAt }
       });
-      await tgRequest('sendMessage', {
+      await tgRequest('editMessageText', {
         chat_id: chatId,
+        message_id: messageId,
         text:
           `✅ Пробный период активирован на <b>${TRIAL_DAYS} дней</b>!\n\n` +
           `Открывай приложение и слушай музыку:`,
@@ -139,7 +147,56 @@ export async function handleUpdate(update) {
     }
 
     if (cb.data === 'buy_subscription') {
+      await tgRequest('editMessageText', {
+        chat_id: chatId,
+        message_id: messageId,
+        text:
+          `💳 <b>Подписка MusicCloud</b>\n\n` +
+          `📅 Срок: <b>30 дней</b>\n` +
+          `💰 Цена: <b>${SUBSCRIPTION_PRICE} ₽</b>\n\n` +
+          `Нажми «Оплатить» чтобы перейти к оплате:`,
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: `💳 Оплатить ${SUBSCRIPTION_PRICE} ₽`, callback_data: 'confirm_buy' }],
+            [{ text: '← Назад', callback_data: 'back_to_start' }],
+          ]
+        }
+      });
+      return;
+    }
+
+    if (cb.data === 'confirm_buy') {
+      await tgRequest('editMessageText', {
+        chat_id: chatId,
+        message_id: messageId,
+        text: '💳 Отправляю счёт на оплату...',
+        parse_mode: 'HTML',
+      });
       await sendPaymentInvoice(chatId);
+      return;
+    }
+
+    if (cb.data === 'back_to_start') {
+      const user = await prisma.user.findFirst({ where: { telegramId } });
+      await tgRequest('editMessageText', {
+        chat_id: chatId,
+        message_id: messageId,
+        text:
+          `👋 Привет, ${firstName || 'друг'}!\n\n` +
+          `🎧 <b>MusicCloud</b> — слушай музыку без ограничений.\n\n` +
+          `✅ Пробный период — <b>${TRIAL_DAYS} дней бесплатно</b>\n` +
+          `💳 Затем — <b>${SUBSCRIPTION_PRICE} ₽/месяц</b>\n\n` +
+          `Нажми кнопку ниже чтобы начать:`,
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🎵 Открыть MusicCloud', web_app: { url: MINI_APP_URL } }],
+            ...(!user?.trialStartedAt ? [[{ text: `🆓 Попробовать бесплатно (${TRIAL_DAYS} дней)`, callback_data: 'start_trial' }]] : []),
+            [{ text: '💳 Купить подписку', callback_data: 'buy_subscription' }],
+          ]
+        }
+      });
       return;
     }
   }
