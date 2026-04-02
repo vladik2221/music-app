@@ -66,61 +66,54 @@ function IconSpinner() {
   );
 }
 
-// ── ProgressBar — отдельный компонент, touch listener добавляется императивно ─
+// ── SeekBar — нативный range input, браузер сам обрабатывает drag ────────────
 
-const ProgressBar = React.memo(function ProgressBar({ pct, thick, onDragStart }) {
-  const barRef = useRef(null);
-  const h = thick ? 5 : 2;
-  const thumbSize = thick ? 16 : 0;
+const seekBarCss = `
+  .seekbar { -webkit-appearance: none; appearance: none; width: 100%;
+    background: transparent; cursor: pointer; outline: none; border: none;
+    padding: 8px 0; margin: 0; }
+  .seekbar::-webkit-slider-runnable-track {
+    height: 4px; border-radius: 4px;
+    background: linear-gradient(to right, #1db954 var(--pct, 0%), rgba(255,255,255,0.15) var(--pct, 0%));
+  }
+  .seekbar.mini::-webkit-slider-runnable-track { height: 2px; }
+  .seekbar::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: #fff; margin-top: -5px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+    transition: transform 0.15s;
+  }
+  .seekbar.mini::-webkit-slider-thumb { width: 0; height: 0; margin-top: -1px; }
+  .seekbar:active::-webkit-slider-thumb { transform: scale(1.3); }
+  .seekbar::-moz-range-track { height: 4px; border-radius: 4px; background: rgba(255,255,255,0.15); }
+  .seekbar.mini::-moz-range-track { height: 2px; }
+  .seekbar::-moz-range-progress { background: #1db954; height: 4px; border-radius: 4px; }
+  .seekbar::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #fff; border: none; }
+  .seekbar.mini::-moz-range-thumb { width: 0; height: 0; }
+`;
 
-  useEffect(() => {
-    const el = barRef.current;
-    if (!el) return;
-    function onTouchStart(e) {
-      e.preventDefault();
-      onDragStart(el, e.touches[0].clientX, "touch");
-    }
-    // passive: false — чтобы preventDefault() работал и браузер не перехватывал скролл
-    el.addEventListener("touchstart", onTouchStart, { passive: false });
-    return () => el.removeEventListener("touchstart", onTouchStart);
-  }, [onDragStart]);
+const ProgressBar = React.memo(function ProgressBar({ progress, duration, thick, onSeek, onDragStart, onDragEnd }) {
+  const pct = duration ? (progress / duration) * 100 : 0;
 
   return (
-    <div
-      ref={barRef}
-      onMouseDown={(e) => onDragStart(e.currentTarget, e.clientX, "mouse")}
-      style={{
-        height: Math.max(h, thumbSize) + 8,
-        display: "flex", alignItems: "center",
-        cursor: "pointer", position: "relative",
-        touchAction: "none",
-      }}
-    >
-      <div style={{ position: "absolute", left: 0, right: 0, height: h, background: "rgba(255,255,255,0.15)", borderRadius: h }}>
-        <div
-          data-fill
-          style={{
-            height: "100%", width: `${pct}%`,
-            background: "#1db954", borderRadius: h,
-            transition: "width 0.25s linear",
-            position: "relative",
-          }}
-        >
-          {thumbSize > 0 && (
-            <div
-              data-thumb
-              style={{
-                position: "absolute", right: -thumbSize / 2, top: "50%",
-                transform: "translateY(-50%)",
-                width: thumbSize, height: thumbSize, borderRadius: "50%",
-                background: "#fff", boxShadow: "0 1px 6px rgba(0,0,0,0.5)",
-                transition: "transform 0.15s",
-              }}
-            />
-          )}
-        </div>
-      </div>
-    </div>
+    <>
+      <style>{seekBarCss}</style>
+      <input
+        type="range"
+        className={thick ? "seekbar" : "seekbar mini"}
+        min={0}
+        max={duration || 100}
+        step={0.1}
+        value={progress}
+        style={{ "--pct": `${pct}%` }}
+        onChange={(e) => onSeek(parseFloat(e.target.value))}
+        onMouseDown={onDragStart}
+        onTouchStart={onDragStart}
+        onMouseUp={onDragEnd}
+        onTouchEnd={onDragEnd}
+      />
+    </>
   );
 });
 
@@ -240,39 +233,13 @@ const SpotifyPlayer = forwardRef(function SpotifyPlayer(
     }
   }
 
-  const onDragStart = useCallback((barEl, startClientX, type) => {
-    const rect = barEl.getBoundingClientRect();
-    const fill = barEl.querySelector("[data-fill]");
-    const thumb = barEl.querySelector("[data-thumb]");
-
-    function getPct(clientX) {
-      return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    }
-    function updateVisual(clientX) {
-      if (fill) { fill.style.width = `${getPct(clientX) * 100}%`; fill.style.background = "#fff"; fill.style.transition = "none"; }
-      if (thumb) thumb.style.transform = "translateY(-50%) scale(1.3)";
-    }
-    function finish(clientX) {
-      if (audioRef.current) audioRef.current.currentTime = getPct(clientX) * (audioRef.current.duration || 0);
-      if (fill) { fill.style.background = "#1db954"; fill.style.transition = "width 0.25s linear"; }
-      if (thumb) thumb.style.transform = "translateY(-50%) scale(1)";
-    }
-
-    isDragging.current = true;
-    updateVisual(startClientX);
-
-    if (type === "mouse") {
-      function onMove(ev) { updateVisual(ev.clientX); }
-      function onUp(ev) { isDragging.current = false; finish(ev.clientX); window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); }
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
-    } else {
-      function onMove(ev) { ev.preventDefault(); updateVisual(ev.touches[0].clientX); }
-      function onEnd(ev) { isDragging.current = false; finish(ev.changedTouches[0].clientX); window.removeEventListener("touchmove", onMove); window.removeEventListener("touchend", onEnd); }
-      window.addEventListener("touchmove", onMove, { passive: false });
-      window.addEventListener("touchend", onEnd);
-    }
+  const onSeek = useCallback((val) => {
+    if (audioRef.current) audioRef.current.currentTime = val;
+    setProgress(val);
   }, []);
+
+  const onDragStart = useCallback(() => { isDragging.current = true; }, []);
+  const onDragEnd = useCallback(() => { isDragging.current = false; }, []);
 
   function fmt(t) {
     if (!t || isNaN(t)) return "0:00";
@@ -280,8 +247,6 @@ const SpotifyPlayer = forwardRef(function SpotifyPlayer(
   }
 
   if (!track) return null;
-
-  const pct = duration ? (progress / duration) * 100 : 0;
 
   function IconBtn({ onClick, children, color = "rgba(255,255,255,0.7)", stopProp = false, size = 40 }) {
     return (
@@ -387,7 +352,7 @@ const SpotifyPlayer = forwardRef(function SpotifyPlayer(
 
         {/* Progress */}
         <div style={{ marginBottom: 4 }}>
-          <ProgressBar pct={pct} thick onDragStart={onDragStart} />
+          <ProgressBar progress={progress} duration={duration} thick onSeek={onSeek} onDragStart={onDragStart} onDragEnd={onDragEnd} />
           <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
             <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{fmt(progress)}</span>
             <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{fmt(duration)}</span>
@@ -440,7 +405,7 @@ const SpotifyPlayer = forwardRef(function SpotifyPlayer(
       backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
       paddingBottom: "env(safe-area-inset-bottom)",
     }}>
-      <ProgressBar pct={pct} onDragStart={onDragStart} />
+      <ProgressBar progress={progress} duration={duration} onSeek={onSeek} onDragStart={onDragStart} onDragEnd={onDragEnd} />
       <div
         onClick={() => setExpanded(true)}
         style={{ maxWidth: 600, margin: "0 auto", padding: "9px 14px 11px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}
