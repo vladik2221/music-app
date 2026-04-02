@@ -199,6 +199,9 @@ async function importTracks() {
         data: { isPublished: true }
       });
 
+      // Удаляем оригинальный файл с сервера после успешной загрузки в S3
+      try { fs.unlinkSync(filePath); } catch {}
+
       console.log(`  🎵 Добавлен: ${artistFull || '—'} — ${title}`);
       added++;
 
