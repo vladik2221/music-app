@@ -73,9 +73,6 @@ const SpotifyPlayer = forwardRef(function SpotifyPlayer(
   ref
 ) {
   const audioRef = useRef(null);
-  const seekBarRef = useRef(null);
-  const fillRef = useRef(null);
-  const thumbRef = useRef(null);
   const isDragging = useRef(false);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -185,52 +182,40 @@ const SpotifyPlayer = forwardRef(function SpotifyPlayer(
     }
   }
 
-  function pctFromClientX(clientX) {
-    const el = seekBarRef.current;
-    if (!el) return 0;
-    const rect = el.getBoundingClientRect();
-    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-  }
-
-  // Обновляем полосу напрямую через DOM — без React ре-рендера
-  function setBarPct(pct) {
-    if (fillRef.current) {
-      fillRef.current.style.width = `${pct * 100}%`;
-      fillRef.current.style.background = "#fff";
-      fillRef.current.style.transition = "none";
-    }
-    if (thumbRef.current) {
-      thumbRef.current.style.transform = "translateY(-50%) scale(1.25)";
-    }
-  }
-
-  function resetBarStyle() {
-    if (fillRef.current) {
-      fillRef.current.style.background = "#1db954";
-      fillRef.current.style.transition = "width 0.25s linear";
-    }
-    if (thumbRef.current) {
-      thumbRef.current.style.transform = "translateY(-50%) scale(1)";
-    }
-  }
-
   function applySeek(pct) {
     if (audioRef.current) audioRef.current.currentTime = pct * (audioRef.current.duration || 0);
   }
 
-  // Mouse
+  function startDrag(barEl, startClientX) {
+    const rect = barEl.getBoundingClientRect();
+    const fill = barEl.querySelector("[data-fill]");
+    const thumb = barEl.querySelector("[data-thumb]");
+
+    function pct(clientX) {
+      return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    }
+    function updateVisual(clientX) {
+      if (fill) { fill.style.width = `${pct(clientX) * 100}%`; fill.style.background = "#fff"; fill.style.transition = "none"; }
+      if (thumb) thumb.style.transform = "translateY(-50%) scale(1.3)";
+    }
+    function finishDrag(clientX) {
+      isDragging.current = false;
+      applySeek(pct(clientX));
+      if (fill) { fill.style.background = "#1db954"; fill.style.transition = "width 0.25s linear"; }
+      if (thumb) thumb.style.transform = "translateY(-50%) scale(1)";
+    }
+
+    isDragging.current = true;
+    updateVisual(startClientX);
+    return { updateVisual, finishDrag };
+  }
+
   function onSeekMouseDown(e) {
     e.preventDefault();
-    isDragging.current = true;
-    setBarPct(pctFromClientX(e.clientX));
-
-    function onMove(ev) {
-      setBarPct(pctFromClientX(ev.clientX));
-    }
+    const { updateVisual, finishDrag } = startDrag(e.currentTarget, e.clientX);
+    function onMove(ev) { updateVisual(ev.clientX); }
     function onUp(ev) {
-      isDragging.current = false;
-      applySeek(pctFromClientX(ev.clientX));
-      resetBarStyle();
+      finishDrag(ev.clientX);
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     }
@@ -238,20 +223,12 @@ const SpotifyPlayer = forwardRef(function SpotifyPlayer(
     window.addEventListener("mouseup", onUp);
   }
 
-  // Touch
   function onSeekTouchStart(e) {
     e.preventDefault();
-    isDragging.current = true;
-    setBarPct(pctFromClientX(e.touches[0].clientX));
-
-    function onMove(ev) {
-      ev.preventDefault();
-      setBarPct(pctFromClientX(ev.touches[0].clientX));
-    }
+    const { updateVisual, finishDrag } = startDrag(e.currentTarget, e.touches[0].clientX);
+    function onMove(ev) { ev.preventDefault(); updateVisual(ev.touches[0].clientX); }
     function onEnd(ev) {
-      isDragging.current = false;
-      applySeek(pctFromClientX(ev.changedTouches[0].clientX));
-      resetBarStyle();
+      finishDrag(ev.changedTouches[0].clientX);
       window.removeEventListener("touchmove", onMove);
       window.removeEventListener("touchend", onEnd);
     }
@@ -270,14 +247,13 @@ const SpotifyPlayer = forwardRef(function SpotifyPlayer(
 
   function ProgressBar({ thick = false }) {
     const h = thick ? 5 : 2;
-    const thumb = thick ? 16 : 0;
+    const thumbSize = thick ? 16 : 0;
     return (
       <div
-        ref={thick ? seekBarRef : null}
         onMouseDown={onSeekMouseDown}
         onTouchStart={onSeekTouchStart}
         style={{
-          height: Math.max(h, thumb) + 8,
+          height: Math.max(h, thumbSize) + 8,
           display: "flex", alignItems: "center",
           cursor: "pointer", position: "relative",
           touchAction: "none",
@@ -285,7 +261,7 @@ const SpotifyPlayer = forwardRef(function SpotifyPlayer(
       >
         <div style={{ position: "absolute", left: 0, right: 0, height: h, background: "rgba(255,255,255,0.15)", borderRadius: h }}>
           <div
-            ref={thick ? fillRef : null}
+            data-fill
             style={{
               height: "100%", width: `${pct}%`,
               background: "#1db954", borderRadius: h,
@@ -293,13 +269,13 @@ const SpotifyPlayer = forwardRef(function SpotifyPlayer(
               position: "relative",
             }}
           >
-            {thumb > 0 && (
+            {thumbSize > 0 && (
               <div
-                ref={thumbRef}
+                data-thumb
                 style={{
-                  position: "absolute", right: -thumb / 2, top: "50%",
+                  position: "absolute", right: -thumbSize / 2, top: "50%",
                   transform: "translateY(-50%)",
-                  width: thumb, height: thumb, borderRadius: "50%",
+                  width: thumbSize, height: thumbSize, borderRadius: "50%",
                   background: "#fff",
                   boxShadow: "0 1px 6px rgba(0,0,0,0.5)",
                   transition: "transform 0.15s",
