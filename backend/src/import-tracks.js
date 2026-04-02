@@ -99,6 +99,13 @@ async function importTracks() {
       console.log(`   Артист:   ${artistFull || '—'}${isCollab ? ' (коллаб — артист не создаётся)' : ''}`);
       console.log(`   Альбом:   ${albumTitle || '—'}${year ? ` (${year})` : ''}`);
 
+      // Пропускаем треки без обложки
+      if (!tags.picture?.length) {
+        console.log(`  🚫 Нет обложки — пропускаю`);
+        skipped++;
+        continue;
+      }
+
       // Пропускаем только если трек уже загружен с файлом
       const exists = await prisma.track.findFirst({
         where: {
