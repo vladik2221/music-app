@@ -131,7 +131,7 @@ const SpotifyPlayer = forwardRef(function SpotifyPlayer(
   ref
 ) {
   const audioRef = useRef(null);
-  const isDragging = useRef(false);
+  const isDragging = useRef(false); // блокирует onTimeUpdate во время drag
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -226,7 +226,7 @@ const SpotifyPlayer = forwardRef(function SpotifyPlayer(
 
   function onTimeUpdate() {
     const a = audioRef.current;
-    if (!a) return;
+    if (!a || isDragging.current) return; // не трогаем DOM пока пользователь тянет
     setProgress(a.currentTime);
     setDuration(a.duration || 0);
   }
@@ -258,16 +258,17 @@ const SpotifyPlayer = forwardRef(function SpotifyPlayer(
       if (thumb) thumb.style.transform = "translateY(-50%) scale(1)";
     }
 
+    isDragging.current = true;
     updateVisual(startClientX);
 
     if (type === "mouse") {
       function onMove(ev) { updateVisual(ev.clientX); }
-      function onUp(ev) { finish(ev.clientX); window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); }
+      function onUp(ev) { isDragging.current = false; finish(ev.clientX); window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); }
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     } else {
       function onMove(ev) { ev.preventDefault(); updateVisual(ev.touches[0].clientX); }
-      function onEnd(ev) { finish(ev.changedTouches[0].clientX); window.removeEventListener("touchmove", onMove); window.removeEventListener("touchend", onEnd); }
+      function onEnd(ev) { isDragging.current = false; finish(ev.changedTouches[0].clientX); window.removeEventListener("touchmove", onMove); window.removeEventListener("touchend", onEnd); }
       window.addEventListener("touchmove", onMove, { passive: false });
       window.addEventListener("touchend", onEnd);
     }
