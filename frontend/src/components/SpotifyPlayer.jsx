@@ -74,6 +74,9 @@ const SpotifyPlayer = forwardRef(function SpotifyPlayer(
 ) {
   const audioRef = useRef(null);
   const seekBarRef = useRef(null);
+  const fillRef = useRef(null);
+  const thumbRef = useRef(null);
+  const isDragging = useRef(false);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -81,8 +84,6 @@ const SpotifyPlayer = forwardRef(function SpotifyPlayer(
   const [expanded, setExpanded] = useState(false);
   const [shuffle, setShuffle] = useState(false);
   const [repeat, setRepeat] = useState(false);
-  const [dragging, setDragging] = useState(false);
-  const [dragPct, setDragPct] = useState(0);
 
   useImperativeHandle(ref, () => ({
     play: () => { audioRef.current?.play(); setPlaying(true); },
@@ -186,29 +187,50 @@ const SpotifyPlayer = forwardRef(function SpotifyPlayer(
 
   function pctFromClientX(clientX) {
     const el = seekBarRef.current;
-    if (!el || !duration) return 0;
+    if (!el) return 0;
     const rect = el.getBoundingClientRect();
     return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
   }
 
+  // Обновляем полосу напрямую через DOM — без React ре-рендера
+  function setBarPct(pct) {
+    if (fillRef.current) {
+      fillRef.current.style.width = `${pct * 100}%`;
+      fillRef.current.style.background = "#fff";
+      fillRef.current.style.transition = "none";
+    }
+    if (thumbRef.current) {
+      thumbRef.current.style.transform = "translateY(-50%) scale(1.25)";
+    }
+  }
+
+  function resetBarStyle() {
+    if (fillRef.current) {
+      fillRef.current.style.background = "#1db954";
+      fillRef.current.style.transition = "width 0.25s linear";
+    }
+    if (thumbRef.current) {
+      thumbRef.current.style.transform = "translateY(-50%) scale(1)";
+    }
+  }
+
   function applySeek(pct) {
-    if (audioRef.current) audioRef.current.currentTime = pct * duration;
+    if (audioRef.current) audioRef.current.currentTime = pct * (audioRef.current.duration || 0);
   }
 
   // Mouse
   function onSeekMouseDown(e) {
     e.preventDefault();
-    const p = pctFromClientX(e.clientX);
-    setDragging(true);
-    setDragPct(p);
+    isDragging.current = true;
+    setBarPct(pctFromClientX(e.clientX));
 
     function onMove(ev) {
-      const np = pctFromClientX(ev.clientX);
-      setDragPct(np);
+      setBarPct(pctFromClientX(ev.clientX));
     }
     function onUp(ev) {
+      isDragging.current = false;
       applySeek(pctFromClientX(ev.clientX));
-      setDragging(false);
+      resetBarStyle();
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     }
@@ -219,19 +241,17 @@ const SpotifyPlayer = forwardRef(function SpotifyPlayer(
   // Touch
   function onSeekTouchStart(e) {
     e.preventDefault();
-    const p = pctFromClientX(e.touches[0].clientX);
-    setDragging(true);
-    setDragPct(p);
+    isDragging.current = true;
+    setBarPct(pctFromClientX(e.touches[0].clientX));
 
     function onMove(ev) {
       ev.preventDefault();
-      const np = pctFromClientX(ev.touches[0].clientX);
-      setDragPct(np);
+      setBarPct(pctFromClientX(ev.touches[0].clientX));
     }
     function onEnd(ev) {
-      const touch = ev.changedTouches[0];
-      applySeek(pctFromClientX(touch.clientX));
-      setDragging(false);
+      isDragging.current = false;
+      applySeek(pctFromClientX(ev.changedTouches[0].clientX));
+      resetBarStyle();
       window.removeEventListener("touchmove", onMove);
       window.removeEventListener("touchend", onEnd);
     }
@@ -246,7 +266,7 @@ const SpotifyPlayer = forwardRef(function SpotifyPlayer(
 
   if (!track) return null;
 
-  const pct = duration ? (dragging ? dragPct * 100 : (progress / duration) * 100) : 0;
+  const pct = duration ? (progress / duration) * 100 : 0;
 
   function ProgressBar({ thick = false }) {
     const h = thick ? 5 : 2;
@@ -264,22 +284,27 @@ const SpotifyPlayer = forwardRef(function SpotifyPlayer(
         }}
       >
         <div style={{ position: "absolute", left: 0, right: 0, height: h, background: "rgba(255,255,255,0.15)", borderRadius: h }}>
-          <div style={{
-            height: "100%", width: `${pct}%`,
-            background: dragging ? "#fff" : "#1db954",
-            borderRadius: h,
-            transition: dragging ? "none" : "width 0.25s linear",
-            position: "relative",
-          }}>
+          <div
+            ref={thick ? fillRef : null}
+            style={{
+              height: "100%", width: `${pct}%`,
+              background: "#1db954", borderRadius: h,
+              transition: "width 0.25s linear",
+              position: "relative",
+            }}
+          >
             {thumb > 0 && (
-              <div style={{
-                position: "absolute", right: -thumb / 2, top: "50%", transform: "translateY(-50%)",
-                width: thumb, height: thumb, borderRadius: "50%",
-                background: "#fff",
-                boxShadow: "0 1px 6px rgba(0,0,0,0.5)",
-                transition: dragging ? "none" : "transform 0.1s",
-                transform: `translateY(-50%) scale(${dragging ? 1.3 : 1})`,
-              }} />
+              <div
+                ref={thumbRef}
+                style={{
+                  position: "absolute", right: -thumb / 2, top: "50%",
+                  transform: "translateY(-50%)",
+                  width: thumb, height: thumb, borderRadius: "50%",
+                  background: "#fff",
+                  boxShadow: "0 1px 6px rgba(0,0,0,0.5)",
+                  transition: "transform 0.15s",
+                }}
+              />
             )}
           </div>
         </div>
