@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, forwardRef, useImperativeHandle } from "react";
+import React, { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from "react";
 
 // ── SVG Icons (Spotify-style) ─────────────────────────────────────────────
 
@@ -65,6 +65,64 @@ function IconSpinner() {
     </svg>
   );
 }
+
+// ── ProgressBar — отдельный компонент, touch listener добавляется императивно ─
+
+const ProgressBar = React.memo(function ProgressBar({ pct, thick, onDragStart }) {
+  const barRef = useRef(null);
+  const h = thick ? 5 : 2;
+  const thumbSize = thick ? 16 : 0;
+
+  useEffect(() => {
+    const el = barRef.current;
+    if (!el) return;
+    function onTouchStart(e) {
+      e.preventDefault();
+      onDragStart(el, e.touches[0].clientX, "touch");
+    }
+    // passive: false — чтобы preventDefault() работал и браузер не перехватывал скролл
+    el.addEventListener("touchstart", onTouchStart, { passive: false });
+    return () => el.removeEventListener("touchstart", onTouchStart);
+  }, [onDragStart]);
+
+  return (
+    <div
+      ref={barRef}
+      onMouseDown={(e) => onDragStart(e.currentTarget, e.clientX, "mouse")}
+      style={{
+        height: Math.max(h, thumbSize) + 8,
+        display: "flex", alignItems: "center",
+        cursor: "pointer", position: "relative",
+        touchAction: "none",
+      }}
+    >
+      <div style={{ position: "absolute", left: 0, right: 0, height: h, background: "rgba(255,255,255,0.15)", borderRadius: h }}>
+        <div
+          data-fill
+          style={{
+            height: "100%", width: `${pct}%`,
+            background: "#1db954", borderRadius: h,
+            transition: "width 0.25s linear",
+            position: "relative",
+          }}
+        >
+          {thumbSize > 0 && (
+            <div
+              data-thumb
+              style={{
+                position: "absolute", right: -thumbSize / 2, top: "50%",
+                transform: "translateY(-50%)",
+                width: thumbSize, height: thumbSize, borderRadius: "50%",
+                background: "#fff", boxShadow: "0 1px 6px rgba(0,0,0,0.5)",
+                transition: "transform 0.15s",
+              }}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -182,59 +240,38 @@ const SpotifyPlayer = forwardRef(function SpotifyPlayer(
     }
   }
 
-  function applySeek(pct) {
-    if (audioRef.current) audioRef.current.currentTime = pct * (audioRef.current.duration || 0);
-  }
-
-  function startDrag(barEl, startClientX) {
+  const onDragStart = useCallback((barEl, startClientX, type) => {
     const rect = barEl.getBoundingClientRect();
     const fill = barEl.querySelector("[data-fill]");
     const thumb = barEl.querySelector("[data-thumb]");
 
-    function pct(clientX) {
+    function getPct(clientX) {
       return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     }
     function updateVisual(clientX) {
-      if (fill) { fill.style.width = `${pct(clientX) * 100}%`; fill.style.background = "#fff"; fill.style.transition = "none"; }
+      if (fill) { fill.style.width = `${getPct(clientX) * 100}%`; fill.style.background = "#fff"; fill.style.transition = "none"; }
       if (thumb) thumb.style.transform = "translateY(-50%) scale(1.3)";
     }
-    function finishDrag(clientX) {
-      isDragging.current = false;
-      applySeek(pct(clientX));
+    function finish(clientX) {
+      if (audioRef.current) audioRef.current.currentTime = getPct(clientX) * (audioRef.current.duration || 0);
       if (fill) { fill.style.background = "#1db954"; fill.style.transition = "width 0.25s linear"; }
       if (thumb) thumb.style.transform = "translateY(-50%) scale(1)";
     }
 
-    isDragging.current = true;
     updateVisual(startClientX);
-    return { updateVisual, finishDrag };
-  }
 
-  function onSeekMouseDown(e) {
-    e.preventDefault();
-    const { updateVisual, finishDrag } = startDrag(e.currentTarget, e.clientX);
-    function onMove(ev) { updateVisual(ev.clientX); }
-    function onUp(ev) {
-      finishDrag(ev.clientX);
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
+    if (type === "mouse") {
+      function onMove(ev) { updateVisual(ev.clientX); }
+      function onUp(ev) { finish(ev.clientX); window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); }
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    } else {
+      function onMove(ev) { ev.preventDefault(); updateVisual(ev.touches[0].clientX); }
+      function onEnd(ev) { finish(ev.changedTouches[0].clientX); window.removeEventListener("touchmove", onMove); window.removeEventListener("touchend", onEnd); }
+      window.addEventListener("touchmove", onMove, { passive: false });
+      window.addEventListener("touchend", onEnd);
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }
-
-  function onSeekTouchStart(e) {
-    e.preventDefault();
-    const { updateVisual, finishDrag } = startDrag(e.currentTarget, e.touches[0].clientX);
-    function onMove(ev) { ev.preventDefault(); updateVisual(ev.touches[0].clientX); }
-    function onEnd(ev) {
-      finishDrag(ev.changedTouches[0].clientX);
-      window.removeEventListener("touchmove", onMove);
-      window.removeEventListener("touchend", onEnd);
-    }
-    window.addEventListener("touchmove", onMove, { passive: false });
-    window.addEventListener("touchend", onEnd);
-  }
+  }, []);
 
   function fmt(t) {
     if (!t || isNaN(t)) return "0:00";
@@ -244,49 +281,6 @@ const SpotifyPlayer = forwardRef(function SpotifyPlayer(
   if (!track) return null;
 
   const pct = duration ? (progress / duration) * 100 : 0;
-
-  function ProgressBar({ thick = false }) {
-    const h = thick ? 5 : 2;
-    const thumbSize = thick ? 16 : 0;
-    return (
-      <div
-        onMouseDown={onSeekMouseDown}
-        onTouchStart={onSeekTouchStart}
-        style={{
-          height: Math.max(h, thumbSize) + 8,
-          display: "flex", alignItems: "center",
-          cursor: "pointer", position: "relative",
-          touchAction: "none",
-        }}
-      >
-        <div style={{ position: "absolute", left: 0, right: 0, height: h, background: "rgba(255,255,255,0.15)", borderRadius: h }}>
-          <div
-            data-fill
-            style={{
-              height: "100%", width: `${pct}%`,
-              background: "#1db954", borderRadius: h,
-              transition: "width 0.25s linear",
-              position: "relative",
-            }}
-          >
-            {thumbSize > 0 && (
-              <div
-                data-thumb
-                style={{
-                  position: "absolute", right: -thumbSize / 2, top: "50%",
-                  transform: "translateY(-50%)",
-                  width: thumbSize, height: thumbSize, borderRadius: "50%",
-                  background: "#fff",
-                  boxShadow: "0 1px 6px rgba(0,0,0,0.5)",
-                  transition: "transform 0.15s",
-                }}
-              />
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   function IconBtn({ onClick, children, color = "rgba(255,255,255,0.7)", stopProp = false, size = 40 }) {
     return (
@@ -392,7 +386,7 @@ const SpotifyPlayer = forwardRef(function SpotifyPlayer(
 
         {/* Progress */}
         <div style={{ marginBottom: 4 }}>
-          <ProgressBar thick />
+          <ProgressBar pct={pct} thick onDragStart={onDragStart} />
           <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
             <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{fmt(progress)}</span>
             <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{fmt(duration)}</span>
@@ -445,7 +439,7 @@ const SpotifyPlayer = forwardRef(function SpotifyPlayer(
       backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
       paddingBottom: "env(safe-area-inset-bottom)",
     }}>
-      <ProgressBar />
+      <ProgressBar pct={pct} onDragStart={onDragStart} />
       <div
         onClick={() => setExpanded(true)}
         style={{ maxWidth: 600, margin: "0 auto", padding: "9px 14px 11px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}
