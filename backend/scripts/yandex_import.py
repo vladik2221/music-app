@@ -47,18 +47,28 @@ def get_liked_tracks(token):
 
     print("📚 Загружаем медиатеку...")
     liked = client.users_likes_tracks()
-    tracks = []
-    for item in liked:
-        try:
-            track = item.fetch_track()
-            artists = ", ".join(a.name for a in track.artists) if track.artists else ""
-            title = track.title or ""
-            if title:
-                tracks.append({"title": title, "artist": artists})
-        except Exception as e:
-            pass
 
-    print(f"📀 Найдено треков в медиатеке: {len(tracks)}")
+    # Получаем все треки одним запросом по ID — без fetch_track() на каждый
+    track_ids = [f"{item.id}:{item.album_id}" for item in liked if item.id and item.album_id]
+    print(f"📀 Треков в медиатеке: {len(track_ids)}, загружаем детали...")
+
+    tracks = []
+    # Загружаем пачками по 50 штук
+    batch_size = 50
+    for i in range(0, len(track_ids), batch_size):
+        batch = track_ids[i:i + batch_size]
+        try:
+            fetched = client.tracks(batch)
+            for track in fetched:
+                if not track or not track.title:
+                    continue
+                artists = ", ".join(a.name for a in track.artists) if track.artists else ""
+                tracks.append({"title": track.title.strip(), "artist": artists})
+        except Exception as e:
+            print(f"  ⚠️  Ошибка загрузки пачки {i}-{i+batch_size}: {e}")
+        print(f"  Загружено: {min(i + batch_size, len(track_ids))}/{len(track_ids)}", end="\r")
+
+    print(f"\n✅ Готово: {len(tracks)} треков")
     return tracks
 
 # ── Поиск на hitmotop.com ──────────────────────────────────────────────────────
